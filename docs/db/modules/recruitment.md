@@ -9,7 +9,7 @@ and the module refers to them by their object id (`oid`).
 
 | Table | Purpose | Status |
 | ----- | ------- | ------ |
-| [`job_post`](#job_post) | A position the company is hiring for, as a draft or published | **Documented** |
+| [`job_post`](#job_post) | A position the company is hiring for: a draft, published or closed | **Documented** |
 
 The DDL is in `configs/postgres/init/01-create-db.sql` ([ADR-D002](../decision-log.md#adr-d002--the-schema-is-an-init-ddl-script-until-production));
 `RecruitmentDbContext` maps the tables with `ExcludeFromMigrations`. The schema is listed in `infra/db-schemas.txt`,
@@ -23,7 +23,8 @@ so `scripts/azure/db-grant-identity.sh` creates it in Azure.
 
 ## `job_post`
 
-> One job post, created by a hiring manager. `is_published = false` is a draft (*koncept*), seen by staff only.
+> One job post, created by a hiring manager. Only a `published` one is seen by applicants; a `draft` (*koncept*) and
+> a `closed` one are seen by staff only.
 
 **Audit:** standard · **Soft delete:** no
 
@@ -36,7 +37,7 @@ so `scripts/azure/db-grant-identity.sh` creates it in Azure.
 | `location` | `TEXT` |  | NO |  | Where the work is done |
 | `department` | `TEXT` |  | NO |  | The department the position belongs to |
 | `description` | `TEXT` |  | NO |  | What the job is, as applicants read it |
-| `is_published` | `BOOLEAN` |  | NO | `false` | `false` = draft (*koncept*), `true` = visible to applicants |
+| `status` | `TEXT` |  | NO | `'draft'` | Where the post is in its life — see CHECK |
 | `open_positions` | `INTEGER` |  | NO |  | How many people are hired for the position |
 | `salary` | `NUMERIC(10,2)` |  | NO |  | The wage in EUR, per hour, month or year as `payment_type` says |
 | `payment_type` | `TEXT` |  | NO |  | How the wage is stated — see CHECK |
@@ -47,6 +48,9 @@ so `scripts/azure/db-grant-identity.sh` creates it in Azure.
 
 | Column | Value | Meaning |
 | ------ | ----- | ------- |
+| `status` | `draft` | Being prepared (*koncept*), seen by staff only |
+| `status` | `published` | Visible to applicants (*zverejnená*) |
+| `status` | `closed` | No longer accepting applicants (*uzavretá*), hidden from them; can be reopened |
 | `payment_type` | `hourly` | Hourly wage (*hodinová mzda*) |
 | `payment_type` | `monthly` | Monthly wage (*mesačná mzda*) |
 | `payment_type` | `yearly` | Yearly wage (*ročná mzda*) |
@@ -58,7 +62,8 @@ so `scripts/azure/db-grant-identity.sh` creates it in Azure.
 | `employment_type` | `student_work_agreement` | *Dohoda o brigádnickej práci študentov* (*brigádnická dohoda*) |
 | `employment_type` | `self_employed` | Self-employed contractor (*živnosť*) |
 
-The application's copies are `PaymentTypes` and `EmploymentTypes` in `RecruitmentVocabulary.cs`; change both together.
+The application's copies are `JobPostStatuses`, `PaymentTypes` and `EmploymentTypes` in `RecruitmentVocabulary.cs`;
+change both together.
 
 **Foreign keys**
 
@@ -74,6 +79,7 @@ The application's copies are `PaymentTypes` and `EmploymentTypes` in `Recruitmen
 | `job_post_location_valid` | CHECK | `btrim(location) <> ''` | No blank location |
 | `job_post_department_valid` | CHECK | `btrim(department) <> ''` | No blank department |
 | `job_post_description_valid` | CHECK | `btrim(description) <> ''` | No blank description |
+| `job_post_status_valid` | CHECK | `status IN ('draft','published','closed')` | Guards the value set |
 | `job_post_open_positions_valid` | CHECK | `open_positions > 0` | At least one position to fill |
 | `job_post_salary_valid` | CHECK | `salary > 0` | A wage is always offered |
 | `job_post_payment_type_valid` | CHECK | `payment_type IN ('hourly','monthly','yearly')` | Guards the value set |
@@ -95,13 +101,19 @@ The application's copies are `PaymentTypes` and `EmploymentTypes` in `Recruitmen
 **Notes**
 
 - **Who writes what.** Only a hiring manager (or an administrator) creates a job post (`POST /job-posts`), and names
-  its recruiter in the same request, choosing from `GET /staff-users?role=Recruiter`. No feature edits a post yet;
-  the table keeps `updated_by` for the editing features to come, which several users will use.
-- **Lengths are the application's.** The command caps `title`, `location` and `department` at 200 characters,
-  `description` at 10 000 and `open_positions` at 1000; the table only guards what must never be stored (blank
+  its recruiter in the same request, choosing from `GET /staff-users?role=Recruiter`. Any hiring manager can then
+  edit it (`PUT /job-posts/{id}`), close it (`POST …/close`) or reopen it (`POST …/reopen`), so the table keeps
+  `updated_by`. Each of them carries the `version` the caller read ([optimistic locking](../conventions.md#optimistic-locking-version)).
+- **Status moves `draft → published ⇄ closed`.** A post is created as a draft or published; editing can publish a
+  draft. A published post never returns to a draft — applicants may have seen it — so it is closed instead. Only a
+  published post can be closed, and only a closed one reopened, which publishes it again. A closed post is reopened
+  before it is edited. The application enforces the transitions; the table only guards the value set.
+- **Lengths are the application's.** The commands cap `title` at 200 characters, `location` and `department` at
+  100, `description` at 3 000 and `open_positions` at 1000; the table only guards what must never be stored (blank
   text, no positions, no wage). `salary` fits `NUMERIC(10,2)`: at most 99 999 999.99, with 2 decimal places.
 - **Public reads see published rows only.** `GET /job-posts` (offset pages, newest first by `created_at`, then `id`)
-  and `GET /job-posts/{id}` are anonymous and filter on `is_published`; a draft answers `404` like a missing post.
+  and `GET /job-posts/{id}` are anonymous and filter on `status = 'published'`; a draft or closed post answers `404`
+  like a missing post.
   They never return `recruiter_id` or the audit columns.
 - **No search index yet — a deviation.** The public list searches `title` and `location` with `ILIKE '%…%'`. The
   [search-index convention](../conventions.md#search-indexes) calls for a trigram GIN index, but that needs the

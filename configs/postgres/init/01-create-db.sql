@@ -87,7 +87,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- job_post  (a position the company is hiring for)
--- Created by a hiring manager. `is_published = false` is a draft (koncept), seen by staff only.
+-- Created by a hiring manager. `status` is `draft` (koncept, seen by staff only), `published` (visible to applicants)
+-- or `closed` (no longer accepting applicants, hidden from them); `draft -> published <-> closed`.
 --
 -- `recruiter_id` is the Entra object id (`oid`) of the staff member with the Recruiter role who is responsible
 -- for the hiring (zodpovedný za realizáciu náboru), chosen by the hiring manager who creates the post. Staff
@@ -99,7 +100,7 @@ CREATE TABLE recruitment.job_post (
     location         TEXT           NOT NULL,
     department       TEXT           NOT NULL,
     description      TEXT           NOT NULL,
-    is_published     BOOLEAN        NOT NULL DEFAULT false,
+    status           TEXT           NOT NULL DEFAULT 'draft',  -- draft / published / closed
     open_positions   INTEGER        NOT NULL,
     salary           NUMERIC(10, 2) NOT NULL,  -- EUR, per `payment_type`
     payment_type     TEXT           NOT NULL,  -- hourly / monthly / yearly wage
@@ -114,6 +115,7 @@ CREATE TABLE recruitment.job_post (
     CONSTRAINT job_post_location_valid CHECK (btrim(location) <> ''),
     CONSTRAINT job_post_department_valid CHECK (btrim(department) <> ''),
     CONSTRAINT job_post_description_valid CHECK (btrim(description) <> ''),
+    CONSTRAINT job_post_status_valid CHECK (status IN ('draft', 'published', 'closed')),
     CONSTRAINT job_post_open_positions_valid CHECK (open_positions > 0),
     CONSTRAINT job_post_salary_valid CHECK (salary > 0),
     CONSTRAINT job_post_payment_type_valid CHECK (payment_type IN ('hourly', 'monthly', 'yearly')),
