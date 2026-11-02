@@ -7,6 +7,7 @@ using RecruitmentModule.Infrastructure;
 using RecruitmentModule.Infrastructure.Entra;
 using Tests.RecruitmentModule.Infrastructure.Entra;
 using Tests.Shared;
+using Tests.Shared.Auth;
 using ValidationException = Kernel.Exceptions.ValidationException;
 
 namespace Tests.RecruitmentModule.Features.JobPostFeatures.CreateJobPost;
@@ -26,16 +27,16 @@ public class CreateJobPostHandlerTests
         Location = "Bratislava",
         Department = "Údržba",
         Description = "Údržba a opravy elektrických zariadení vo výrobnej hale.",
+        Status = JobPostStatuses.Draft,
         OpenPositions = 2,
         Salary = 1800.50m,
         PaymentType = PaymentTypes.Monthly,
         EmploymentType = EmploymentTypes.FullTime,
         RecruiterId = Recruiter.Id,
-        CreatedBy = Manager.Id,
     };
 
     private static CreateJobPostHandler Handler(RecruitmentDbContext db) =>
-        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager } });
+        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager } }, new StubCurrentUser(Manager.Id));
 
     [Fact]
     public async Task Stores_a_draft_with_its_recruiter()
@@ -51,7 +52,7 @@ public class CreateJobPostHandlerTests
         Assert.Equal(("Elektrotechnik údržby", "Bratislava", "Údržba", 2), (stored.Title, stored.Location, stored.Department, stored.OpenPositions));
         Assert.Equal(Command.Description, stored.Description);
         Assert.Equal((1800.50m, PaymentTypes.Monthly, EmploymentTypes.FullTime), (stored.Salary, stored.PaymentType, stored.EmploymentType));
-        Assert.False(stored.IsPublished);
+        Assert.Equal(JobPostStatuses.Draft, stored.Status);
         Assert.Equal(Recruiter.Id, stored.RecruiterId);
         Assert.Equal(Manager.Id, stored.CreatedBy);
         Assert.Null(stored.UpdatedAt);
@@ -66,9 +67,9 @@ public class CreateJobPostHandlerTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
 
-        CreateJobPostResponse response = await Handler(db).HandleAsync(Command with { IsPublished = true }, ct);
+        CreateJobPostResponse response = await Handler(db).HandleAsync(Command with { Status = JobPostStatuses.Published }, ct);
 
-        Assert.True(response.IsPublished);
+        Assert.Equal(JobPostStatuses.Published, response.Status);
     }
 
     [Theory]
@@ -135,6 +136,15 @@ public class CreateJobPostHandlerTests
 
         await Assert.ThrowsAsync<ValidationException>(
             () => Handler(db).HandleAsync(Command with { RecruiterId = Guid.NewGuid() }, ct));
+    }
+
+    [Theory]
+    [InlineData(JobPostStatuses.Closed)]
+    [InlineData("archived")]
+    [InlineData("")]
+    public void A_new_post_is_a_draft_or_published(string status)
+    {
+        Assert.False(CommandValidation.IsValid(Command with { Status = status }));
     }
 
     [Theory]

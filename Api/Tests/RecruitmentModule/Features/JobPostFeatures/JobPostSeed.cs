@@ -4,11 +4,11 @@ using RecruitmentModule.Infrastructure;
 
 namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 
-/// <summary>Job posts that satisfy the real schema, for the read features' tests.</summary>
+/// <summary>Job posts that satisfy the real schema, for the read and edit features' tests.</summary>
 internal static class JobPostSeed
 {
     public static JobPost Post(
-        string title, bool isPublished = true, string location = "Bratislava",
+        string title, string status = JobPostStatuses.Published, string location = "Bratislava",
         string employmentType = EmploymentTypes.FullTime) => new()
     {
         Id = Guid.CreateVersion7(),
@@ -16,7 +16,7 @@ internal static class JobPostSeed
         Location = location,
         Department = "Údržba",
         Description = $"Opis pozície {title}.",
-        IsPublished = isPublished,
+        Status = status,
         OpenPositions = 1,
         Salary = 1500m,
         PaymentType = PaymentTypes.Monthly,

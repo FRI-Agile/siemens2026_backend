@@ -1,4 +1,5 @@
 using Kernel.Exceptions;
+using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Features.JobPostFeatures.GetPublishedJobPost;
 using RecruitmentModule.Infrastructure;
@@ -6,7 +7,7 @@ using Tests.Shared;
 
 namespace Tests.RecruitmentModule.Features.JobPostFeatures.GetPublishedJobPost;
 
-/// <summary>Reading one published job post; a draft is as invisible as a missing one.</summary>
+/// <summary>Reading one published job post; a draft or closed post is as invisible as a missing one.</summary>
 public class GetPublishedJobPostHandlerTests
 {
     [Fact]
@@ -22,15 +23,17 @@ public class GetPublishedJobPostHandlerTests
         Assert.Equal((post.Id, "Elektrikár", "Opis pozície Elektrikár.", 1500m), (response.Id, response.Title, response.Description, response.Salary));
     }
 
-    [Fact]
-    public async Task A_draft_is_404()
+    [Theory]
+    [InlineData(JobPostStatuses.Draft)]
+    [InlineData(JobPostStatuses.Closed)]
+    public async Task A_draft_or_closed_post_is_404(string status)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost draft = JobPostSeed.Post("Koncept", isPublished: false);
-        await JobPostSeed.AddAsync(db, ct, draft);
+        JobPost hidden = JobPostSeed.Post("Skrytá", status);
+        await JobPostSeed.AddAsync(db, ct, hidden);
 
-        await Assert.ThrowsAsync<NotFoundException>(() => new GetPublishedJobPostHandler(db).HandleAsync(new(draft.Id), ct));
+        await Assert.ThrowsAsync<NotFoundException>(() => new GetPublishedJobPostHandler(db).HandleAsync(new(hidden.Id), ct));
     }
 
     [Fact]

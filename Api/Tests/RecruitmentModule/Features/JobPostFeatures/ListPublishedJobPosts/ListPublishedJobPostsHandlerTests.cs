@@ -6,7 +6,7 @@ using Tests.Shared;
 
 namespace Tests.RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
 
-/// <summary>Listing published job posts: never drafts, newest first, a page at a time, filtered.</summary>
+/// <summary>Listing published job posts: never drafts or closed posts, newest first, a page at a time, filtered.</summary>
 public class ListPublishedJobPostsHandlerTests
 {
     private static async Task<ListPublishedJobPostsResponse> ListAsync(
@@ -18,9 +18,10 @@ public class ListPublishedJobPostsHandlerTests
     {
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost older = JobPostSeed.Post("Elektrikár");
-        JobPost draft = JobPostSeed.Post("Koncept", isPublished: false);
+        JobPost draft = JobPostSeed.Post("Koncept", JobPostStatuses.Draft);
+        JobPost closed = JobPostSeed.Post("Uzavretá", JobPostStatuses.Closed);
         JobPost newer = JobPostSeed.Post("Zvárač");
-        await JobPostSeed.AddAsync(db, TestContext.Current.CancellationToken, older, draft, newer);
+        await JobPostSeed.AddAsync(db, TestContext.Current.CancellationToken, older, draft, closed, newer);
 
         ListPublishedJobPostsResponse response = await ListAsync(db, new ListPublishedJobPostsQuery());
 
