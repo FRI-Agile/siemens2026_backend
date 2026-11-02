@@ -57,6 +57,17 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   }
 }
 
+// The extensions the DDL creates must be allow-listed before anyone may create them (ADR-D006); the operator then
+// creates them in scripts/azure/db-grant-identity.sh. A comma-separated list: add to it, never replace it.
+resource extensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
+  parent: server
+  name: 'azure.extensions'
+  properties: {
+    value: 'pg_trgm'
+    source: 'user-override'
+  }
+}
+
 resource entraAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
   parent: server
   name: operatorObjectId

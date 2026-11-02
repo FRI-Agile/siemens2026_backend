@@ -131,6 +131,12 @@ Where a name must be unique regardless of case, use a unique index on **`lower(c
 Free-text search columns (e.g. `job_offer.title`) use a **trigram GIN** index
 (`pg_trgm`) rather than a plain b-tree, to support fuzzy / partial matching.
 
+- One index per searched column, `USING gin (<col> public.gin_trgm_ops)`, named like any index
+  (`idx_<table>_<col>`). A search across several columns joins them with `OR`, which the planner serves with a
+  `BitmapOr` of the per-column indexes.
+- The extension lives in `public` and is created once per database ([ADR-D006](decision-log.md#adr-d006--extensions-live-in-public-and-are-created-by-the-operator)),
+  so the operator class is always written schema-qualified: a module schema's `search_path` need not include `public`.
+
 ## Outbox pattern (`outbox_message`)
 
 Every producing module owns a **transactional outbox** table named `outbox_message` in its **own

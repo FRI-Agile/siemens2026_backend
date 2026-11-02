@@ -40,9 +40,10 @@ case $action in
     import)
         [[ -f $dir/healthyhires.dump ]] || die "$dir/healthyhires.dump not found"
         log "Restoring the database"
-        # The schemas already exist (db-grant-identity.sh creates them, and the application role may not), so
-        # their CREATE SCHEMA entries are left out of the restore.
-        pg_restore --list "$dir/healthyhires.dump" | grep -v ' SCHEMA - ' > "$dir/restore.list"
+        # The schemas and extensions already exist (db-grant-identity.sh creates them, and the application role may
+        # not), so their CREATE SCHEMA and CREATE EXTENSION entries, and the extensions' comments, are left out.
+        pg_restore --list "$dir/healthyhires.dump" \
+            | grep -v -e ' SCHEMA - ' -e ' EXTENSION - ' -e ' COMMENT - EXTENSION ' > "$dir/restore.list"
         pg_restore --dbname="$conn" --role=healthyhires_app --no-owner --exit-on-error \
             --use-list="$dir/restore.list" "$dir/healthyhires.dump"
         log "Uploading blobs to $account"

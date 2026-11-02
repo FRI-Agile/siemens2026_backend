@@ -93,3 +93,22 @@ and the deploy workflow touches no schema.
   applied is still open; numbered SQL files applied through the same tunnel fit the SQL-first approach best. Until
   then a change is applied by hand, and the DDL script is updated in the same pull request.
 
+---
+
+## ADR-D006 — Extensions live in `public` and are created by the operator
+
+**Date:** 2026-11-02 · **Status:** accepted · **Follows up:** ADR-D005
+
+The first extension, `pg_trgm` (the job post search's trigram indexes), is created `WITH SCHEMA public` by the DDL
+script locally and by `db-grant-identity.sh` (`just azure-db-grant`) in Azure, after `infra/modules/postgres.bicep`
+allow-lists it in the server's `azure.extensions` parameter.
+
+- Azure only lets an allow-listed extension be created, and creating one needs the `CREATE` privilege on the database,
+  which `healthyhires_app` does not have (ADR-D005). So the operator creates it, as with the schemas; `db-schema.sh`
+  skips the `CREATE EXTENSION` lines and refuses to run until they exist, and `migrate.sh import` leaves the
+  extensions out of the restore.
+- An extension belongs to the database, not to a module, so it does not follow ADR-D003: a copy per module schema is
+  impossible (an extension is installed once), and `public` is where every schema can reach it. Its objects are
+  written schema-qualified, e.g. `public.gin_trgm_ops`.
+- `db-grant-identity.sh` reads the extensions from the DDL, so a new one is added there and to `azure.extensions`;
+  `azure.extensions` is a list, added to rather than replaced.

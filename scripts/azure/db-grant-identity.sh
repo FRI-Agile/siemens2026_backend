@@ -7,7 +7,8 @@
 # swaps the login role without touching ownership, and the old one is dropped.
 #
 # Access is per module schema (iam.md §4.2): the schemas listed in infra/db-schemas.txt are created here and owned
-# by healthyhires_app, which may connect to the database but not create further schemas of its own.
+# by healthyhires_app, which may connect to the database but not create further schemas of its own. For the same
+# reason the extensions the DDL uses are created here, by the operator (ADR-D006).
 #
 # PostgreSQL has no public access, so the connection runs through an SSH tunnel over NetBird; the password is
 # the operator's Entra token. Needs psql 18+ locally and this machine on NetBird.
@@ -46,6 +47,13 @@ while IFS= read -r schema; do
     admin healthyhires -c "CREATE SCHEMA IF NOT EXISTS $schema AUTHORIZATION healthyhires_app"
     log "  $schema"
 done < "$root/infra/db-schemas.txt"
+
+# Every CREATE EXTENSION in the DDL, as written there; postgres.bicep's azure.extensions must allow-list each one.
+log "Extensions from configs/postgres/init/01-create-db.sql"
+while IFS= read -r statement; do
+    admin healthyhires -c "$statement"
+    log "  $statement"
+done < <(grep -E '^CREATE EXTENSION IF NOT EXISTS [a-z][a-z0-9_]* WITH SCHEMA public;$' "$root/configs/postgres/init/01-create-db.sql")
 
 log "Dropping login roles of earlier VMs"
 for old in $(admin postgres -At -c "SELECT rolname FROM pg_roles WHERE rolname LIKE 'hh-api-%' AND rolname <> '$role'"); do

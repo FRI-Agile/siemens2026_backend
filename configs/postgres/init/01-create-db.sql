@@ -18,6 +18,13 @@
 CREATE SCHEMA IF NOT EXISTS kernel;
 CREATE SCHEMA IF NOT EXISTS recruitment;
 
+-- ---------------------------------------------------------------------------
+-- Extensions (database-wide; created by the operator in Azure, ADR-D006)
+-- ---------------------------------------------------------------------------
+-- pg_trgm: the trigram GIN indexes behind free-text search (conventions.md § Search indexes). In `public`, so every
+-- module schema reaches it the same way; its operator classes are always written schema-qualified.
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
 
 -- ===========================================================================
 --  SHARED: kernel
@@ -125,6 +132,10 @@ CREATE TABLE recruitment.job_post (
 );
 -- A recruiter's own job posts.
 CREATE INDEX idx_job_post_recruiter_id ON recruitment.job_post (recruiter_id);
+-- The job post lists' search, `title ILIKE '%…%' OR location ILIKE '%…%'`: one trigram index per column, which the
+-- planner combines for the OR. A b-tree cannot serve a pattern with a leading wildcard.
+CREATE INDEX idx_job_post_title ON recruitment.job_post USING gin (title public.gin_trgm_ops);
+CREATE INDEX idx_job_post_location ON recruitment.job_post USING gin (location public.gin_trgm_ops);
 CREATE TRIGGER trg_job_post_set_audit
     BEFORE UPDATE ON recruitment.job_post
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();

@@ -292,6 +292,7 @@ In the portal, *Application Insights → Logs*: `AppRequests | take 10` shows AP
 | Quadlets, Collector or Falco config (`deploy/`) | Push to `main`, like code |
 | `infra/cloud-init.yaml` or `deploy/host/` | Needs a rebuilt VM (§10.2): Azure does not let custom data change |
 | A new backend module with its own schema | Add the schema to `infra/db-schemas.txt`, run `just azure-db-grant`, then push. The API cannot create schemas itself |
+| A new PostgreSQL extension | Add it to `azure.extensions` in `infra/modules/postgres.bicep` and `just azure-deploy`, add its `CREATE EXTENSION … WITH SCHEMA public` to the DDL, then `just azure-db-grant`. The API cannot create extensions itself ([ADR-D006](../db/decision-log.md#adr-d006--extensions-live-in-public-and-are-created-by-the-operator)) |
 | A schema change (table, column, index) after the first deploy | Not automated yet: `just azure-db-schema` only creates an empty database's baseline. Apply the change by hand through the same tunnel until migrations exist ([ADR-D005](../db/decision-log.md#adr-d005--the-ddl-script-is-applied-to-azure-once-as-the-baseline)) |
 | Accept a Trivy or ZAP finding | Only with a reason: `.trivyignore` or `.zap/rules.tsv`. Prefer fixing it |
 

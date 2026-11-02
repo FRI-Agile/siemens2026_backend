@@ -91,6 +91,8 @@ change both together.
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id |
 | `idx_job_post_recruiter_id` | `(recruiter_id)` | btree | A recruiter's own job posts |
+| `idx_job_post_title` | `(title public.gin_trgm_ops)` | GIN trigram | The lists' search on the title |
+| `idx_job_post_location` | `(location public.gin_trgm_ops)` | GIN trigram | The lists' search on the location |
 
 **Triggers**
 
@@ -115,7 +117,11 @@ change both together.
   and `GET /job-posts/{id}` are anonymous and filter on `status = 'published'`; a draft or closed post answers `404`
   like a missing post.
   They never return `recruiter_id` or the audit columns.
-- **No search index yet — a deviation.** The public list searches `title` and `location` with `ILIKE '%…%'`. The
-  [search-index convention](../conventions.md#search-indexes) calls for a trigram GIN index, but that needs the
-  `pg_trgm` extension allow-listed on the Azure server, and one company's job posts are few enough to scan. Add it
-  when the table grows or the plan shows the scan costing.
+- **Staff see every row.** `GET /job-posts/manage` (hiring managers and administrators) lists every status, optionally
+  filtered by `status`, `employmentType` and the same search, in the same order. It returns every column, `version`
+  included, so the edit, close and reopen features can be driven from it.
+- **Search uses the trigram indexes.** Both lists search `title ILIKE '%…%' OR location ILIKE '%…%'`
+  (`JobPostQueryExtensions.MatchingSearch`). The [search-index convention](../conventions.md#search-indexes) gives
+  each column its own trigram GIN index, which the planner combines with a `BitmapOr`; one index over both columns
+  would only serve a query written against the same expression. A term under 3 characters has no trigram to look up
+  and still scans. `JobPostQueryExtensionsTests` pins the query to both indexes.
