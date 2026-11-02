@@ -2,7 +2,7 @@
 
 Index of the HealthyHires documentation. HealthyHires is a talent acquisition web application for a single company: anonymous applicants browse job offers and apply, and staff sign in with Microsoft Entra ID to manage offers and applications.
 
-New to the docs? Start with the [Architecture Description Document](architecture/ADD.md), and read [How to Write Docs](how-to-write-docs.md) before editing anything.
+New to the project? [Getting Started](getting-started.md) takes you from a fresh clone to the whole application running locally. New to the docs? Start with the [Architecture Description Document](architecture/ADD.md), and read [How to Write Docs](how-to-write-docs.md) before editing anything.
 
 ## Architecture
 

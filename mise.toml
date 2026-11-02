@@ -1,0 +1,34 @@
+# Toolchain and one-time setup for local development (docs/getting-started.md). `mise run setup` installs
+# the tools below and everything the backend and the frontend need to run; the Justfile then starts them
+# (`just aspire-up`, `just app`). Docker or Podman is not managed here.
+
+# Same major versions as CI (.github/workflows/ci.yml). The Aspire CLI is optional (`dotnet run --project
+# AppHost` works without it); keep it in step with the Aspire.AppHost.Sdk version in AppHost.csproj.
+[tools]
+dotnet = "10"
+node = "24"
+just = "latest"
+"npm:@microsoft/aspire-cli" = "13.6.1"
+
+# The commands below run in sh on Linux and macOS and in cmd on Windows, so they use no syntax only one
+# of them understands.
+[tasks."setup:backend"]
+description = "Restores the NuGet packages and creates the HTTPS development certificate"
+run = [
+  "dotnet restore healthyhires.slnx",
+  # The AppHost's default launch profile is https. Trusting the certificate is not supported on every Linux
+  # distribution; without it the browser only warns, so a failure here does not stop the setup.
+  "dotnet dev-certs https --check --trust || dotnet dev-certs https --trust || echo Could not trust the HTTPS development certificate, see docs/getting-started.md",
+]
+
+[tasks."setup:frontend"]
+description = "Installs the npm packages and creates public/config.json from its template"
+dir = "App"
+run = [
+  "npm ci",
+  '''node -e "fs.existsSync('public/config.json') || fs.copyFileSync('config.example.json', 'public/config.json')"''',
+]
+
+[tasks.setup]
+description = "Installs everything needed to run the backend and the frontend"
+depends = ["setup:backend", "setup:frontend"]

@@ -23,6 +23,7 @@ HealthyHires is a **single repository** that holds the source code, the document
 | `scripts/azure/` | Operator scripts: provisioning, NetBird enrolment, the database grant, migration between subscriptions |
 | `.github/workflows/` | `ci.yml` for pull requests; `deploy.yml` builds, scans, signs and deploys from `main` |
 | `.trivyignore`, `.zap/rules.tsv` | The only places a Trivy or ZAP finding can be accepted, each with its reason ([ADR-008](ADR.md#adr-008-security--supply-chain-tools--trivy-openscap-aide-cosign), [ADR-020](ADR.md#adr-020-dynamic-application-security-testing--owasp-zap)) |
+| `mise.toml` | Tool versions (.NET, Node, just, Aspire CLI) and the `mise run setup` task ([getting-started.md](../getting-started.md)) |
 | `Justfile` | [Just](https://github.com/casey/just) recipes that wrap the local-development commands in §3 and the Azure scripts |
 | `README.md` | Quick start: how to run the backend, the frontend and the local edge |
 

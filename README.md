@@ -7,6 +7,12 @@ Common commands are wrapped in a [Just](https://github.com/casey/just) file; `ju
 recipe is a documented command from [Development Architecture §3](docs/architecture/development-architecture.md#3-local-development),
 so everything also works without `just`.
 
+## First-time setup
+
+[Getting Started](docs/getting-started.md) walks through the prerequisites (Docker or Podman, and
+[mise](https://mise.jdx.dev/) for .NET, Node, `just` and the Aspire CLI) and running the whole application.
+In short: `mise trust`, `mise run setup`, then `just aspire-up` and `just app` in two terminals.
+
 ## Run the backend with Aspire
 
 [Aspire](https://aspire.dev/)
