@@ -30,7 +30,8 @@ public static class StaffClaims
     public const string UniqueName = "upn";
 
     /// <summary>
-    /// The signed-in staff user's object id — the value to store as e.g. <c>created_by</c>. Every staff policy
+    /// The signed-in staff user's object id, for an endpoint that reads the principal itself; a handler stamping e.g.
+    /// <c>created_by</c> uses <see cref="ICurrentUser"/> instead. Every staff policy
     /// requires the claim, so on an endpoint behind one it is always present; a validated token already proves the
     /// user exists, so never re-query it.
     /// </summary>
