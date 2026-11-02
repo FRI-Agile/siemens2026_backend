@@ -18,9 +18,9 @@ using Tests.Shared;
 namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 
 /// <summary>
-/// <c>POST /job-posts</c>, <c>GET /job-posts/manage</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and
-/// <c>reopen</c> for hiring managers (and administrators) only; <c>GET /job-posts</c> and <c>GET /job-posts/{id}</c>
-/// for anyone, signed in or not.
+/// <c>POST /job-posts</c>, <c>POST /job-posts/manage/search</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and
+/// <c>reopen</c> for hiring managers (and administrators) only; <c>POST /job-posts/search</c> and
+/// <c>GET /job-posts/{id}</c> for anyone, signed in or not.
 /// </summary>
 public class JobPostEndpointTests
 {
@@ -82,6 +82,10 @@ public class JobPostEndpointTests
     private static HttpClient As(WebApplication app, string role) =>
         StaffTokens.Client(app, StaffTokens.Token(StaffTokens.Claims(role)));
 
+    /// <summary>A list search with <paramref name="json"/> as its body, as written.</summary>
+    private static Task<HttpResponseMessage> SearchAsync(HttpClient client, string path, string json, CancellationToken ct) =>
+        client.PostAsync(path, new StringContent(json, System.Text.Encoding.UTF8, "application/json"), ct);
+
     [Theory]
     [InlineData(StaffRoles.HiringManager)]
     [InlineData(StaffRoles.Admin)]
@@ -141,7 +145,7 @@ public class JobPostEndpointTests
         }
         using HttpClient anonymous = StaffTokens.Client(app);
 
-        using HttpResponseMessage list = await anonymous.GetAsync("/job-posts?offset=0&limit=10", ct);
+        using HttpResponseMessage list = await SearchAsync(anonymous, "/job-posts/search", """{ "offset": 0, "limit": 10 }""", ct);
 
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
         JsonElement page = JsonDocument.Parse(await list.Content.ReadAsStringAsync(ct)).RootElement;
@@ -210,7 +214,7 @@ public class JobPostEndpointTests
         using HttpResponseMessage created = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
-        using HttpResponseMessage response = await client.GetAsync("/job-posts/manage?status=draft", ct);
+        using HttpResponseMessage response = await SearchAsync(client, "/job-posts/manage/search", """{ "status": "draft" }""", ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         JsonElement page = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
@@ -228,23 +232,23 @@ public class JobPostEndpointTests
         using HttpClient recruiter = As(app, StaffRoles.Recruiter);
         using HttpClient anonymous = StaffTokens.Client(app);
 
-        using HttpResponseMessage forbidden = await recruiter.GetAsync("/job-posts/manage", ct);
-        using HttpResponseMessage unauthorized = await anonymous.GetAsync("/job-posts/manage", ct);
+        using HttpResponseMessage forbidden = await SearchAsync(recruiter, "/job-posts/manage/search", "{}", ct);
+        using HttpResponseMessage unauthorized = await SearchAsync(anonymous, "/job-posts/manage/search", "{}", ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
     }
 
     [Theory]
-    [InlineData("status=archived")]
-    [InlineData("limit=101")]
-    public async Task An_unknown_status_or_out_of_range_paging_in_the_managed_list_is_400(string queryString)
+    [InlineData("""{ "status": "archived" }""")]
+    [InlineData("""{ "limit": 101 }""")]
+    public async Task An_unknown_status_or_out_of_range_paging_in_the_managed_list_is_400(string body)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using WebApplication app = await StartHostAsync(ct);
         using HttpClient manager = As(app, StaffRoles.HiringManager);
 
-        using HttpResponseMessage response = await manager.GetAsync($"/job-posts/manage?{queryString}", ct);
+        using HttpResponseMessage response = await SearchAsync(manager, "/job-posts/manage/search", body, ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -292,17 +296,17 @@ public class JobPostEndpointTests
     }
 
     [Theory]
-    [InlineData("limit=0")]
-    [InlineData("limit=101")]
-    [InlineData("offset=-1")]
-    [InlineData("employmentType=TPP")]
-    public async Task Out_of_range_paging_or_an_unknown_type_is_400(string queryString)
+    [InlineData("""{ "limit": 0 }""")]
+    [InlineData("""{ "limit": 101 }""")]
+    [InlineData("""{ "offset": -1 }""")]
+    [InlineData("""{ "employmentType": "TPP" }""")]
+    public async Task Out_of_range_paging_or_an_unknown_type_is_400(string body)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using WebApplication app = await StartHostAsync(ct);
         using HttpClient anonymous = StaffTokens.Client(app);
 
-        using HttpResponseMessage response = await anonymous.GetAsync($"/job-posts?{queryString}", ct);
+        using HttpResponseMessage response = await SearchAsync(anonymous, "/job-posts/search", body, ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

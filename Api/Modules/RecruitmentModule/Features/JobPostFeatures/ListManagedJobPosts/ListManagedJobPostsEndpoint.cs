@@ -1,44 +1,35 @@
-using System.ComponentModel.DataAnnotations;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
+using Kernel.Idempotency;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using RecruitmentModule.Domain;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ListManagedJobPosts;
 
 /// <summary>
-/// <c>GET /api/v1/recruitment/job-posts/manage</c>: every job post, drafts and closed ones included, a page at a time,
-/// with what editing, closing and reopening need. Hiring managers (and administrators) only, like those features.
+/// <c>POST /api/v1/recruitment/job-posts/manage/search</c>: every job post, drafts and closed ones included, a page at
+/// a time, with what editing, closing and reopening need. A read with a body (<c>MapQuery</c>). Hiring managers (and
+/// administrators) only, like those features.
 /// </summary>
 internal sealed class ListManagedJobPostsEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder group) =>
         group.MapGroup("/job-posts")
             .RequireStaff(StaffPolicies.HiringManager)
-            .MapGet("/manage", static async (
-                [Range(0, int.MaxValue)] int? offset,
-                [Range(1, ListManagedJobPostsQuery.MaxLimit)] int? limit,
-                [StringLength(200)] string? search,
-                [AllowedValues(JobPostStatuses.Draft, JobPostStatuses.Published, JobPostStatuses.Closed, null)]
-                string? status,
-                [AllowedValues(
-                    EmploymentTypes.FullTime, EmploymentTypes.PartTime, EmploymentTypes.FixedTerm,
-                    EmploymentTypes.WorkPerformanceAgreement, EmploymentTypes.WorkActivityAgreement,
-                    EmploymentTypes.StudentWorkAgreement, EmploymentTypes.SelfEmployed, null)]
-                string? employmentType,
+            .MapQuery("/manage/search", static async (
+                ListManagedJobPostsRequest request,
                 IQueryHandler<ListManagedJobPostsQuery, ListManagedJobPostsResponse> handler,
                 CancellationToken ct) =>
             {
-                ListManagedJobPostsQuery query = new()
+                ListManagedJobPostsQuery query = new() // manual map (ADR-A012)
                 {
-                    Offset = offset ?? 0,
-                    Limit = limit ?? ListManagedJobPostsQuery.DefaultLimit,
-                    Search = search,
-                    Status = status,
-                    EmploymentType = employmentType,
+                    Offset = request.Offset ?? 0,
+                    Limit = request.Limit ?? ListManagedJobPostsQuery.DefaultLimit,
+                    Search = request.Search,
+                    Status = request.Status,
+                    EmploymentType = request.EmploymentType,
                 };
                 return Results.Ok(await handler.HandleAsync(query, ct));
             })

@@ -5,7 +5,7 @@ import type { EmploymentType, PaymentType } from './vocabulary.ts'
 // The public job post reads. Anonymous, so nothing here may import the staff auth (ADR-F004).
 // TODO: replace the hand-written types with the generated OpenAPI client (ADR-F005).
 
-/** A published job post as `GET /api/v1/recruitment/job-posts` lists it. */
+/** A published job post as `POST /api/v1/recruitment/job-posts/search` lists it. */
 export interface PublishedJobPostItem {
   id: string
   title: string
@@ -33,6 +33,7 @@ export interface PublishedJobPost extends PublishedJobPostItem {
   openPositions: number
 }
 
+/** The body of `POST /api/v1/recruitment/job-posts/search`; the API checks the same limits (1 to 100 a page). */
 export interface PublishedJobPostFilter {
   offset: number
   limit: number
@@ -44,19 +45,20 @@ export interface PublishedJobPostFilter {
 export function usePublishedJobPosts(filter: PublishedJobPostFilter) {
   return useQuery({
     queryKey: ['recruitment', 'job-posts', 'published', filter],
-    queryFn: ({ signal }) => {
-      const params = new URLSearchParams({
-        offset: String(filter.offset),
-        limit: String(filter.limit),
-      })
-      if (filter.search) params.set('search', filter.search)
-      if (filter.employmentType)
-        params.set('employmentType', filter.employmentType)
-      return request<PublishedJobPostPage>(
-        `/api/v1/recruitment/job-posts?${params}`,
-        { signal },
-      )
-    },
+    // A read with a body (MapQuery in the API): a POST, but without an idempotency key, since it changes nothing.
+    queryFn: ({ signal }) =>
+      request<PublishedJobPostPage>('/api/v1/recruitment/job-posts/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // An empty search or no type means no filter; the API reads a missing field the same way.
+        body: JSON.stringify({
+          offset: filter.offset,
+          limit: filter.limit,
+          search: filter.search || undefined,
+          employmentType: filter.employmentType,
+        }),
+        signal,
+      }),
     // Keeps the current page on screen while the next one loads, instead of flashing an empty table.
     placeholderData: keepPreviousData,
   })

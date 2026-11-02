@@ -1,38 +1,31 @@
-using System.ComponentModel.DataAnnotations;
 using Kernel.CQRS;
 using Kernel.Endpoints;
+using Kernel.Idempotency;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using RecruitmentModule.Domain;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
 
 /// <summary>
-/// <c>GET /api/v1/recruitment/job-posts</c>: the published job posts, a page at a time. Public: applicants browse them
-/// anonymously, so drafts and closed posts never appear.
+/// <c>POST /api/v1/recruitment/job-posts/search</c>: the published job posts, a page at a time. A read with a body
+/// (<c>MapQuery</c>), so the filters travel in the request rather than the query string. Public: applicants browse
+/// them anonymously, so drafts and closed posts never appear.
 /// </summary>
 internal sealed class ListPublishedJobPostsEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder group) =>
-        group.MapGet("/job-posts", static async (
-                [Range(0, int.MaxValue)] int? offset,
-                [Range(1, ListPublishedJobPostsQuery.MaxLimit)] int? limit,
-                [StringLength(200)] string? search,
-                [AllowedValues(
-                    EmploymentTypes.FullTime, EmploymentTypes.PartTime, EmploymentTypes.FixedTerm,
-                    EmploymentTypes.WorkPerformanceAgreement, EmploymentTypes.WorkActivityAgreement,
-                    EmploymentTypes.StudentWorkAgreement, EmploymentTypes.SelfEmployed, null)]
-                string? employmentType,
+        group.MapQuery("/job-posts/search", static async (
+                ListPublishedJobPostsRequest request,
                 IQueryHandler<ListPublishedJobPostsQuery, ListPublishedJobPostsResponse> handler,
                 CancellationToken ct) =>
             {
-                ListPublishedJobPostsQuery query = new()
+                ListPublishedJobPostsQuery query = new() // manual map (ADR-A012)
                 {
-                    Offset = offset ?? 0,
-                    Limit = limit ?? ListPublishedJobPostsQuery.DefaultLimit,
-                    Search = search,
-                    EmploymentType = employmentType,
+                    Offset = request.Offset ?? 0,
+                    Limit = request.Limit ?? ListPublishedJobPostsQuery.DefaultLimit,
+                    Search = request.Search,
+                    EmploymentType = request.EmploymentType,
                 };
                 return Results.Ok(await handler.HandleAsync(query, ct));
             })

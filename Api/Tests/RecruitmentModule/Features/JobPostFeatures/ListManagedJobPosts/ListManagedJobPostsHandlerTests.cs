@@ -1,3 +1,4 @@
+using Kernel.Exceptions;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Features.JobPostFeatures.ListManagedJobPosts;
@@ -82,5 +83,52 @@ public class ListManagedJobPostsHandlerTests
         });
 
         Assert.Equal([match.Id], response.Items.Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListManagedJobPostsQuery
+        {
+            Offset = -1,
+            Limit = ListManagedJobPostsQuery.MaxLimit + 1,
+            Search = new string('a', ListManagedJobPostsQuery.MaxSearchLength + 1),
+            EmploymentType = "TPP",
+        }));
+
+        Assert.Equal(
+            new[] { nameof(ListManagedJobPostsQuery.Offset), nameof(ListManagedJobPostsQuery.Limit),
+                nameof(ListManagedJobPostsQuery.Search), nameof(ListManagedJobPostsQuery.EmploymentType) }.Order(),
+            e.Errors.Keys.Order());
+    }
+
+    [Fact]
+    public async Task A_limit_of_zero_is_400()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListManagedJobPostsQuery { Limit = 0 }));
+    }
+
+    [Fact]
+    public void The_query_attributes_state_the_same_rules()
+    {
+        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { Limit = 0 }));
+        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { Offset = -1 }));
+        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { EmploymentType = "TPP" }));
+        Assert.True(CommandValidation.IsValid(new ListManagedJobPostsQuery()));
+    }
+
+    [Fact]
+    public async Task An_unknown_status_is_400()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
+            () => ListAsync(db, new ListManagedJobPostsQuery { Status = "archived" }));
+
+        Assert.Equal([nameof(ListManagedJobPostsQuery.Status)], e.Errors.Keys);
     }
 }

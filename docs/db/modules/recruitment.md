@@ -113,12 +113,11 @@ change both together.
 - **Lengths are the application's.** The commands cap `title` at 200 characters, `location` and `department` at
   100, `description` at 3 000 and `open_positions` at 1000; the table only guards what must never be stored (blank
   text, no positions, no wage). `salary` fits `NUMERIC(10,2)`: at most 99 999 999.99, with 2 decimal places.
-- **Public reads see published rows only.** `GET /job-posts` (offset pages, newest first by `created_at`, then `id`)
-  and `GET /job-posts/{id}` are anonymous and filter on `status = 'published'`; a draft or closed post answers `404`
-  like a missing post.
-  They never return `recruiter_id` or the audit columns.
-- **Staff see every row.** `GET /job-posts/manage` (hiring managers and administrators) lists every status, optionally
-  filtered by `status`, `employmentType` and the same search, in the same order. It returns every column, `version`
+- **Public reads see published rows only.** `POST /job-posts/search` (a read with a body, offset pages, newest first
+  by `created_at`, then `id`) and `GET /job-posts/{id}` are anonymous and filter on `status = 'published'`; a draft or
+  closed post answers `404` like a missing post. They never return `recruiter_id` or the audit columns.
+- **Staff see every row.** `POST /job-posts/manage/search` (hiring managers and administrators) lists every status,
+  optionally filtered by `status`, `employmentType` and the same search, in the same order. It returns every column, `version`
   included, so the edit, close and reopen features can be driven from it.
 - **Search uses the trigram indexes.** Both lists search `title ILIKE '%…%' OR location ILIKE '%…%'`
   (`JobPostQueryExtensions.MatchingSearch`). The [search-index convention](../conventions.md#search-indexes) gives

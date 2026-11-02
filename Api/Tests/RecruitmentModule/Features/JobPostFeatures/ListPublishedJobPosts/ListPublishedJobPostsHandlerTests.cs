@@ -1,3 +1,4 @@
+using Kernel.Exceptions;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
@@ -90,5 +91,41 @@ public class ListPublishedJobPostsHandlerTests
 
         Assert.Equal([student.Id], response.Items.Select(i => i.Id));
         Assert.Equal(1, response.Total);
+    }
+
+    [Fact]
+    public async Task Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListPublishedJobPostsQuery
+        {
+            Offset = -1,
+            Limit = ListPublishedJobPostsQuery.MaxLimit + 1,
+            Search = new string('a', ListPublishedJobPostsQuery.MaxSearchLength + 1),
+            EmploymentType = "TPP",
+        }));
+
+        Assert.Equal(
+            new[] { nameof(ListPublishedJobPostsQuery.Offset), nameof(ListPublishedJobPostsQuery.Limit),
+                nameof(ListPublishedJobPostsQuery.Search), nameof(ListPublishedJobPostsQuery.EmploymentType) }.Order(),
+            e.Errors.Keys.Order());
+    }
+
+    [Fact]
+    public async Task A_limit_of_zero_is_400()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListPublishedJobPostsQuery { Limit = 0 }));
+    }
+
+    [Fact]
+    public void The_query_attributes_state_the_same_rules()
+    {
+        Assert.False(CommandValidation.IsValid(new ListPublishedJobPostsQuery { Limit = 0 }));
+        Assert.False(CommandValidation.IsValid(new ListPublishedJobPostsQuery { Offset = -1 }));
+        Assert.False(CommandValidation.IsValid(new ListPublishedJobPostsQuery { EmploymentType = "TPP" }));
+        Assert.True(CommandValidation.IsValid(new ListPublishedJobPostsQuery()));
     }
 }
