@@ -1,5 +1,6 @@
 using Kernel.CQRS;
 using Microsoft.EntityFrameworkCore;
+using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
 
@@ -54,7 +55,7 @@ internal sealed class ListPublishedJobPostsHandler(RecruitmentDbContext db)
         int offset = Math.Max(query.Offset, 0);
         int limit = Math.Clamp(query.Limit, 1, ListPublishedJobPostsQuery.MaxLimit);
 
-        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().Where(p => p.IsPublished);
+        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().Where(p => p.Status == JobPostStatuses.Published);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {

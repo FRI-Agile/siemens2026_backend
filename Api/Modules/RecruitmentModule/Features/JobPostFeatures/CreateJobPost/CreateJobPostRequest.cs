@@ -19,9 +19,11 @@ public sealed record CreateJobPostRequest
     /// <example>Údržba a opravy elektrických zariadení vo výrobnej hale.</example>
     public string Description { get; init; } = string.Empty;
 
-    /// <summary>Whether applicants can see the post; <c>false</c> keeps it a draft (koncept).</summary>
-    /// <example>false</example>
-    public bool IsPublished { get; init; }
+    /// <summary>
+    /// <c>draft</c> keeps the post a draft (koncept) that only staff see; <c>published</c> shows it to applicants.
+    /// </summary>
+    /// <example>draft</example>
+    public string Status { get; init; } = string.Empty;
 
     /// <summary>How many people are hired for the position.</summary>
     /// <example>2</example>

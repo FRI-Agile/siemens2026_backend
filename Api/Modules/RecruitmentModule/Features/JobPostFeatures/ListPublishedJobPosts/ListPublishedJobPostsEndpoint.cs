@@ -10,7 +10,7 @@ namespace RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
 
 /// <summary>
 /// <c>GET /api/v1/recruitment/job-posts</c>: the published job posts, a page at a time. Public: applicants browse them
-/// anonymously, so drafts never appear.
+/// anonymously, so drafts and closed posts never appear.
 /// </summary>
 internal sealed class ListPublishedJobPostsEndpoint : IEndpoint
 {

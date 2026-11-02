@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
@@ -16,7 +15,6 @@ internal sealed class CreateJobPostEndpoint : IEndpoint
             .RequireStaff(StaffPolicies.HiringManager)
             .MapPost("", static async (
                 CreateJobPostRequest request,
-                ClaimsPrincipal user,
                 ICommandHandler<CreateJobPostCommand, CreateJobPostResponse> handler,
                 CancellationToken ct) =>
             {
@@ -26,13 +24,12 @@ internal sealed class CreateJobPostEndpoint : IEndpoint
                     Location = request.Location,
                     Department = request.Department,
                     Description = request.Description,
-                    IsPublished = request.IsPublished,
+                    Status = request.Status,
                     OpenPositions = request.OpenPositions,
                     Salary = request.Salary,
                     PaymentType = request.PaymentType,
                     EmploymentType = request.EmploymentType,
                     RecruiterId = request.RecruiterId,
-                    CreatedBy = user.GetStaffId(),
                 };
                 CreateJobPostResponse result = await handler.HandleAsync(command, ct);
 

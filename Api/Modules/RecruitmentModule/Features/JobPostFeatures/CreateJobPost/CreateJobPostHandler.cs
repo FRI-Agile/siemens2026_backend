@@ -6,7 +6,6 @@ using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
 using RecruitmentModule.Infrastructure.Entra;
-using ValidationException = Kernel.Exceptions.ValidationException;
 
 namespace RecruitmentModule.Features.JobPostFeatures.CreateJobPost;
 
@@ -19,16 +18,18 @@ public sealed record CreateJobPostCommand : ICommand
     [Required, StringLength(200)]
     public string Title { get; init; } = string.Empty;
 
-    [Required, StringLength(200)]
+    [Required, StringLength(100)]
     public string Location { get; init; } = string.Empty;
 
-    [Required, StringLength(200)]
+    [Required, StringLength(100)]
     public string Department { get; init; } = string.Empty;
 
-    [Required, StringLength(10000)]
+    [Required, StringLength(3000)]
     public string Description { get; init; } = string.Empty;
 
-    public bool IsPublished { get; init; }
+    /// <summary><see cref="JobPostStatuses.Draft"/> or <see cref="JobPostStatuses.Published"/>; a new post is never closed.</summary>
+    [Required, AllowedValues(JobPostStatuses.Draft, JobPostStatuses.Published)]
+    public string Status { get; init; } = JobPostStatuses.Draft;
 
     [Range(1, 1000)]
     public int OpenPositions { get; init; }
@@ -50,9 +51,6 @@ public sealed record CreateJobPostCommand : ICommand
     /// <summary>The Entra object id of a staff member with the <see cref="StaffRoles.Recruiter"/> role.</summary>
     [Required, NotEmpty]
     public Guid RecruiterId { get; init; }
-
-    /// <summary>The acting hiring manager's object id.</summary>
-    public Guid CreatedBy { get; init; }
 }
 
 /// <summary>The created job post.</summary>
@@ -63,7 +61,7 @@ public sealed record CreateJobPostResponse(
     string Location,
     string Department,
     string Description,
-    bool IsPublished,
+    string Status,
     int OpenPositions,
     decimal Salary,
     string PaymentType,
@@ -72,16 +70,12 @@ public sealed record CreateJobPostResponse(
     DateTimeOffset CreatedAt,
     short Version);
 
-internal sealed class CreateJobPostHandler(RecruitmentDbContext db, IStaffDirectory directory)
+internal sealed class CreateJobPostHandler(RecruitmentDbContext db, IStaffDirectory directory, ICurrentUser currentUser)
     : ICommandHandler<CreateJobPostCommand, CreateJobPostResponse>
 {
     public async Task<CreateJobPostResponse> HandleAsync(CreateJobPostCommand command, CancellationToken ct = default)
     {
-        // Staff accounts live in Entra, so the database cannot enforce the role (ADR-D004); the directory is asked.
-        IReadOnlyList<StaffMember> staff = await directory.ListStaffAsync(ct);
-        if (!staff.Any(s => s.Id == command.RecruiterId && s.Roles.Contains(StaffRoles.Recruiter)))
-            throw ValidationException.ForField(nameof(command.RecruiterId),
-                "Zodpovedný za realizáciu náboru musí byť používateľ s rolou náborový pracovník.");
+        await directory.EnsureRecruiterAsync(command.RecruiterId, nameof(command.RecruiterId), ct);
 
         JobPost post = new()
         {
@@ -90,19 +84,19 @@ internal sealed class CreateJobPostHandler(RecruitmentDbContext db, IStaffDirect
             Location = command.Location,
             Department = command.Department,
             Description = command.Description,
-            IsPublished = command.IsPublished,
+            Status = command.Status,
             OpenPositions = command.OpenPositions,
             Salary = command.Salary,
             PaymentType = command.PaymentType,
             EmploymentType = command.EmploymentType,
             RecruiterId = command.RecruiterId,
-            CreatedBy = command.CreatedBy,
+            CreatedBy = currentUser.RequireId(), // the creator comes from the token, never the request
         };
         db.JobPosts.Add(post);
         await db.SaveChangesAsync(ct);
 
         return new CreateJobPostResponse(
-            post.Id, post.Title, post.Location, post.Department, post.Description, post.IsPublished,
+            post.Id, post.Title, post.Location, post.Department, post.Description, post.Status,
             post.OpenPositions, post.Salary, post.PaymentType, post.EmploymentType, post.RecruiterId,
             post.CreatedAt, post.Version);
     }
