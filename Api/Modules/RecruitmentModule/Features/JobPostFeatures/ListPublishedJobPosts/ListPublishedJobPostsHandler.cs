@@ -55,24 +55,17 @@ internal sealed class ListPublishedJobPostsHandler(RecruitmentDbContext db)
         int offset = Math.Max(query.Offset, 0);
         int limit = Math.Clamp(query.Limit, 1, ListPublishedJobPostsQuery.MaxLimit);
 
-        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().Where(p => p.Status == JobPostStatuses.Published);
-
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            string pattern = $"%{EscapeLike(query.Search.Trim())}%";
-            posts = posts.Where(p => EF.Functions.ILike(p.Title, pattern) || EF.Functions.ILike(p.Location, pattern));
-        }
+        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking()
+            .Where(p => p.Status == JobPostStatuses.Published)
+            .MatchingSearch(query.Search);
 
         if (query.EmploymentType is not null)
             posts = posts.Where(p => p.EmploymentType == query.EmploymentType);
 
         int total = await posts.CountAsync(ct);
 
-        // Newest first. A v7 id is only ordered to the millisecond, so it breaks ties rather than leading; being unique,
-        // it keeps the order total, which offset pages need to neither repeat nor skip a post.
         List<PublishedJobPostItem> items = await posts
-            .OrderByDescending(p => p.CreatedAt)
-            .ThenByDescending(p => p.Id)
+            .NewestFirst()
             .Skip(offset)
             .Take(limit)
             .Select(p => new PublishedJobPostItem(
@@ -81,10 +74,4 @@ internal sealed class ListPublishedJobPostsHandler(RecruitmentDbContext db)
 
         return new ListPublishedJobPostsResponse(items, total, offset, limit);
     }
-
-    /// <summary>Makes the caller's text match literally: <c>%</c> and <c>_</c> are LIKE wildcards, <c>\</c> its escape.</summary>
-    private static string EscapeLike(string text) =>
-        text.Replace(@"\", @"\\", StringComparison.Ordinal)
-            .Replace("%", @"\%", StringComparison.Ordinal)
-            .Replace("_", @"\_", StringComparison.Ordinal);
 }

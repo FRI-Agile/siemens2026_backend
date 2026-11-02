@@ -18,8 +18,9 @@ using Tests.Shared;
 namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 
 /// <summary>
-/// <c>POST /job-posts</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and <c>reopen</c> for hiring managers (and
-/// administrators) only; <c>GET /job-posts</c> and <c>GET /job-posts/{id}</c> for anyone, signed in or not.
+/// <c>POST /job-posts</c>, <c>GET /job-posts/manage</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and
+/// <c>reopen</c> for hiring managers (and administrators) only; <c>GET /job-posts</c> and <c>GET /job-posts/{id}</c>
+/// for anyone, signed in or not.
 /// </summary>
 public class JobPostEndpointTests
 {
@@ -196,6 +197,56 @@ public class JobPostEndpointTests
         using IServiceScope scope = app.Services.CreateScope();
         RecruitmentDbContext db = scope.ServiceProvider.GetRequiredService<RecruitmentDbContext>();
         Assert.Equal(Guid.Parse(StaffTokens.ObjectId), (await db.JobPosts.SingleAsync(ct)).UpdatedBy);
+    }
+
+    [Theory]
+    [InlineData(StaffRoles.HiringManager)]
+    [InlineData(StaffRoles.Admin)]
+    public async Task A_hiring_manager_lists_drafts_with_their_version(string role)
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient client = As(app, role);
+        using HttpResponseMessage created = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        using HttpResponseMessage response = await client.GetAsync("/job-posts/manage?status=draft", ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        JsonElement page = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal(1, page.GetProperty("total").GetInt32());
+        JsonElement item = page.GetProperty("items")[0];
+        Assert.Equal((JobPostStatuses.Draft, 1), (item.GetProperty("status").GetString(), item.GetProperty("version").GetInt32()));
+        Assert.Equal(Recruiter.Id, item.GetProperty("recruiterId").GetGuid());
+    }
+
+    [Fact]
+    public async Task Only_hiring_managers_list_the_posts_they_manage()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient recruiter = As(app, StaffRoles.Recruiter);
+        using HttpClient anonymous = StaffTokens.Client(app);
+
+        using HttpResponseMessage forbidden = await recruiter.GetAsync("/job-posts/manage", ct);
+        using HttpResponseMessage unauthorized = await anonymous.GetAsync("/job-posts/manage", ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("status=archived")]
+    [InlineData("limit=101")]
+    public async Task An_unknown_status_or_out_of_range_paging_in_the_managed_list_is_400(string queryString)
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient manager = As(app, StaffRoles.HiringManager);
+
+        using HttpResponseMessage response = await manager.GetAsync($"/job-posts/manage?{queryString}", ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
