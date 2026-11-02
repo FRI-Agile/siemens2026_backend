@@ -15,6 +15,32 @@ public static class ModuleEvents
 
     /// <summary>A hiring manager created a job post.</summary>
     public const string JobPostCreated = "job_post_created";
+
+    /// <summary>A hiring manager edited a job post, possibly publishing a draft.</summary>
+    public const string JobPostUpdated = "job_post_updated";
+
+    /// <summary>A hiring manager closed a published job post.</summary>
+    public const string JobPostClosed = "job_post_closed";
+
+    /// <summary>A hiring manager reopened a closed job post.</summary>
+    public const string JobPostReopened = "job_post_reopened";
+}
+
+/// <summary>Where a job post is in its life (<c>job_post.status</c>).</summary>
+/// <remarks>
+/// <c>draft → published ⇄ closed</c>. A published post never goes back to a draft: applicants may have seen it, so it is
+/// closed instead.
+/// </remarks>
+public static class JobPostStatuses
+{
+    /// <summary>Being prepared (<i>koncept</i>), seen by staff only.</summary>
+    public const string Draft = "draft";
+
+    /// <summary>Visible to applicants (<i>zverejnená</i>).</summary>
+    public const string Published = "published";
+
+    /// <summary>No longer accepting applicants (<i>uzavretá</i>); hidden from them, and can be reopened.</summary>
+    public const string Closed = "closed";
 }
 
 /// <summary>How a job post's wage is stated (<c>job_post.payment_type</c>).</summary>

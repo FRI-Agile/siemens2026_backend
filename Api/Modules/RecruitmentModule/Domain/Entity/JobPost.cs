@@ -13,8 +13,8 @@ public sealed class JobPost
 
     public string Description { get; set; } = string.Empty;
 
-    /// <summary><c>false</c> while the post is a draft (<i>koncept</i>), seen by staff only.</summary>
-    public bool IsPublished { get; set; }
+    /// <summary>One of <see cref="JobPostStatuses"/>; only a published post is seen by applicants.</summary>
+    public string Status { get; set; } = JobPostStatuses.Draft;
 
     public int OpenPositions { get; set; }
 

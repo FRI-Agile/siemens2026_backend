@@ -16,6 +16,7 @@ import {
   jobPostFormSchema,
   useCreateJobPost,
   useRecruiters,
+  type CreateJobPostBody,
   type JobPostForm,
 } from '../../../features/recruitment/jobPosts.ts'
 import {
@@ -184,16 +185,16 @@ export function StaffJobsPage() {
         }
       : {}
 
-  function submit(values: JobPostForm, isPublished: boolean) {
+  function submit(values: JobPostForm, status: CreateJobPostBody['status']) {
     setSaved(null)
     setFailure(null)
     createJobPost.mutate(
-      { ...values, isPublished },
+      { ...values, status },
       {
         onSuccess: (post) => {
           reset()
           setSaved(
-            post.isPublished
+            post.status === 'published'
               ? `Pozícia „${post.title}“ bola zverejnená.`
               : `Pozícia „${post.title}“ bola uložená ako koncept.`,
           )
@@ -222,8 +223,11 @@ export function StaffJobsPage() {
         onSubmit={(event) => {
           // Both buttons submit; the one pressed decides between a draft and a published post.
           const submitter = (event.nativeEvent as SubmitEvent).submitter
-          const isPublished = submitter?.getAttribute('name') === 'publish'
-          void handleSubmit((values) => submit(values, isPublished))(event)
+          const status =
+            submitter?.getAttribute('name') === 'publish'
+              ? 'published'
+              : 'draft'
+          void handleSubmit((values) => submit(values, status))(event)
         }}
       >
         {me && !canCreate && (

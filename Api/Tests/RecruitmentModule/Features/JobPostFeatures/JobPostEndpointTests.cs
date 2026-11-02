@@ -18,8 +18,8 @@ using Tests.Shared;
 namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 
 /// <summary>
-/// <c>POST /job-posts</c> for hiring managers (and administrators) only; <c>GET /job-posts</c> and
-/// <c>GET /job-posts/{id}</c> for anyone, signed in or not.
+/// <c>POST /job-posts</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and <c>reopen</c> for hiring managers (and
+/// administrators) only; <c>GET /job-posts</c> and <c>GET /job-posts/{id}</c> for anyone, signed in or not.
 /// </summary>
 public class JobPostEndpointTests
 {
@@ -31,6 +31,7 @@ public class JobPostEndpointTests
         location = "Bratislava",
         department = "Údržba",
         description = "Údržba a opravy elektrických zariadení vo výrobnej hale.",
+        status = JobPostStatuses.Draft,
         openPositions = 2,
         salary = 9.5,
         paymentType = PaymentTypes.Hourly,
@@ -44,7 +45,7 @@ public class JobPostEndpointTests
         location = "Bratislava",
         department = "Údržba",
         description = "Údržba a opravy elektrických zariadení vo výrobnej hale.",
-        isPublished = true,
+        status = JobPostStatuses.Published,
         openPositions = 2,
         salary = 9.5,
         paymentType = PaymentTypes.Hourly,
@@ -93,7 +94,7 @@ public class JobPostEndpointTests
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         JsonElement created = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
-        Assert.False(created.GetProperty("isPublished").GetBoolean());
+        Assert.Equal(JobPostStatuses.Draft, created.GetProperty("status").GetString());
         Assert.Equal(Recruiter.Id, created.GetProperty("recruiterId").GetGuid());
         Assert.Equal(9.5m, created.GetProperty("salary").GetDecimal());
         Assert.Equal(EmploymentTypes.StudentWorkAgreement, created.GetProperty("employmentType").GetString());
@@ -151,6 +152,92 @@ public class JobPostEndpointTests
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
         JsonElement post = JsonDocument.Parse(await detail.Content.ReadAsStringAsync(ct)).RootElement;
         Assert.False(post.TryGetProperty("recruiterId", out _));
+    }
+
+    [Fact]
+    public async Task A_hiring_manager_edits_closes_and_reopens_a_post()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient manager = As(app, StaffRoles.HiringManager);
+        using HttpClient anonymous = StaffTokens.Client(app);
+        using HttpResponseMessage created = await manager.PostAsJsonAsync("/job-posts", CreateBody, ct);
+        string id = JsonDocument.Parse(await created.Content.ReadAsStringAsync(ct)).RootElement.GetProperty("id").GetString()!;
+
+        using HttpResponseMessage published = await manager.PutAsJsonAsync($"/job-posts/{id}", new
+        {
+            title = "Elektrotechnik údržby",
+            location = "Trnava",
+            department = "Údržba",
+            description = "Údržba a opravy elektrických zariadení vo výrobnej hale.",
+            status = JobPostStatuses.Published,
+            openPositions = 3,
+            salary = 10,
+            paymentType = PaymentTypes.Hourly,
+            employmentType = EmploymentTypes.StudentWorkAgreement,
+            recruiterId = Recruiter.Id,
+            version = 1,
+        }, ct);
+        Assert.Equal(HttpStatusCode.OK, published.StatusCode);
+        JsonElement edited = JsonDocument.Parse(await published.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal((JobPostStatuses.Published, "Trnava", 2), (edited.GetProperty("status").GetString(), edited.GetProperty("location").GetString(), edited.GetProperty("version").GetInt32()));
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/job-posts/{id}", ct)).StatusCode);
+
+        using HttpResponseMessage closed = await manager.PostAsJsonAsync($"/job-posts/{id}/close", new { version = 2 }, ct);
+        Assert.Equal(HttpStatusCode.OK, closed.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/job-posts/{id}", ct)).StatusCode);
+
+        using HttpResponseMessage reopened = await manager.PostAsJsonAsync($"/job-posts/{id}/reopen", new { version = 3 }, ct);
+        Assert.Equal(HttpStatusCode.OK, reopened.StatusCode);
+        JsonElement state = JsonDocument.Parse(await reopened.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal((JobPostStatuses.Published, 4), (state.GetProperty("status").GetString(), state.GetProperty("version").GetInt32()));
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/job-posts/{id}", ct)).StatusCode);
+
+        using IServiceScope scope = app.Services.CreateScope();
+        RecruitmentDbContext db = scope.ServiceProvider.GetRequiredService<RecruitmentDbContext>();
+        Assert.Equal(Guid.Parse(StaffTokens.ObjectId), (await db.JobPosts.SingleAsync(ct)).UpdatedBy);
+    }
+
+    [Fact]
+    public async Task A_stale_version_or_a_wrong_status_is_409()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient manager = As(app, StaffRoles.HiringManager);
+        using HttpResponseMessage created = await manager.PostAsJsonAsync("/job-posts", PublishedBody, ct);
+        string id = JsonDocument.Parse(await created.Content.ReadAsStringAsync(ct)).RootElement.GetProperty("id").GetString()!;
+
+        using HttpResponseMessage stale = await manager.PostAsJsonAsync($"/job-posts/{id}/close", new { version = 5 }, ct);
+        using HttpResponseMessage notClosed = await manager.PostAsJsonAsync($"/job-posts/{id}/reopen", new { version = 1 }, ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, notClosed.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("close")]
+    [InlineData("reopen")]
+    public async Task A_recruiter_cannot_close_or_reopen_a_post(string action)
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient client = As(app, StaffRoles.Recruiter);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync($"/job-posts/{Guid.NewGuid()}/{action}", new { version = 1 }, ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Editing_an_unknown_post_is_404()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient manager = As(app, StaffRoles.HiringManager);
+
+        using HttpResponseMessage response = await manager.PostAsJsonAsync($"/job-posts/{Guid.NewGuid()}/close", new { version = 1 }, ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Theory]

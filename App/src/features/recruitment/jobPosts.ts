@@ -48,14 +48,18 @@ export const jobPostFormSchema = z.object({
 
 export type JobPostForm = z.infer<typeof jobPostFormSchema>
 
+/** Where a job post is in its life: `draft → published ⇄ closed` (`JobPostStatuses` in the API). */
+export type JobPostStatus = 'draft' | 'published' | 'closed'
+
 /** The body of `POST /api/v1/recruitment/job-posts`. TODO: replace with the generated OpenAPI client (ADR-F005). */
 export interface CreateJobPostBody extends JobPostForm {
-  /** `false` saves a draft (koncept). */
-  isPublished: boolean
+  /** `draft` saves a draft (koncept); a new post is never closed. */
+  status: Exclude<JobPostStatus, 'closed'>
 }
 
 /** A job post as the API returns it. */
-export interface JobPost extends CreateJobPostBody {
+export interface JobPost extends JobPostForm {
+  status: JobPostStatus
   id: string
   createdAt: string
   version: number
