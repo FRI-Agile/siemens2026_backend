@@ -55,6 +55,10 @@ internal static class StaffAuthentication
                 jwt.TokenValidationParameters.ValidAudiences = [entra.ApiClientId!, $"api://{entra.ApiClientId}"];
             });
 
+        // Who is acting, for handlers that stamp created_by/updated_by from the token rather than the request.
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.AddSingleton<ICurrentUser, HttpContextCurrentUser>();
+
         builder.Services.AddAuthorization();
         builder.Services.AddOptions<AuthorizationOptions>()
             .Configure<IOptions<EntraOptions>>(static (authorization, entraOptions) =>
