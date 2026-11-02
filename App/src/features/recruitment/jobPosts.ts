@@ -7,24 +7,21 @@ import { useStaffAuth } from '../../shared/auth/StaffAuthContext.ts'
 import { employmentTypes, paymentTypes } from './vocabulary.ts'
 
 const required = 'Toto pole je povinné.'
-const text = z
-  .string()
-  .trim()
-  .min(1, required)
-  .max(200, 'Text môže mať najviac 200 znakov.')
+const text = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1, required)
+    .max(max, `Text môže mať najviac ${max} znakov.`)
 const positions = 'Zadajte celé číslo od 1 do 1000.'
 const salary = 'Zadajte kladné číslo s najviac 2 desatinnými miestami.'
 
 /** The job post form's rules; keep them in line with `CreateJobPostCommand` (ADR-F010). */
 export const jobPostFormSchema = z.object({
-  title: text,
-  location: text,
-  department: text,
-  description: z
-    .string()
-    .trim()
-    .min(1, required)
-    .max(10000, 'Text môže mať najviac 10000 znakov.'),
+  title: text(200),
+  location: text(100),
+  department: text(100),
+  description: text(3000),
   employmentType: z.enum(employmentTypes, {
     error: 'Vyberte typ pracovného pomeru.',
   }),
