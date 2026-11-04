@@ -48,8 +48,22 @@ export const router = createBrowserRouter([
       {
         path: 'jobs',
         lazy: () =>
+          import('./Staff/StaffJobPostsPage.tsx').then((m) => ({
+            Component: m.StaffJobPostsPage,
+          })),
+      },
+      {
+        path: 'jobs/new',
+        lazy: () =>
           import('./Staff/StaffJobsPage.tsx').then((m) => ({
             Component: m.StaffJobsPage,
+          })),
+      },
+      {
+        path: 'jobs/:jobPostId',
+        lazy: () =>
+          import('./Staff/StaffJobPostDetailPage.tsx').then((m) => ({
+            Component: m.StaffJobPostDetailPage,
           })),
       },
     ],

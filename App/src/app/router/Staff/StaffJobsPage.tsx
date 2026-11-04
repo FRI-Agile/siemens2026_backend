@@ -144,15 +144,15 @@ const formFields = [
   'recruiterId',
 ] as const satisfies readonly (keyof JobPostForm)[]
 
-/** The roles the API lets create a job post (StaffPolicies.HiringManager); here they only shape the UI. */
+/** The roles the API lets create a job post; here they only shape the UI. */
 const creatorRoles = ['HiringManager', 'Admin']
 
 export function StaffJobsPage() {
   const styles = useStyles()
   const navigate = useNavigate()
   const createJobPost = useCreateJobPost()
-  const recruiters = useRecruiters()
   const { data: me } = useCurrentStaff()
+  const recruiters = useRecruiters(me)
   const [saved, setSaved] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
 
@@ -233,7 +233,7 @@ export function StaffJobsPage() {
         {me && !canCreate && (
           <MessageBar intent="warning">
             <MessageBarBody>
-              Pracovnú pozíciu môže vytvoriť iba hiring manažér.
+              Pracovnú pozíciu môže vytvoriť iba HiringManager alebo Admin.
             </MessageBarBody>
           </MessageBar>
         )}

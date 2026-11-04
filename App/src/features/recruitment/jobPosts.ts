@@ -4,6 +4,7 @@ import { request } from '../../shared/api/http.ts'
 import { useCommand } from '../../shared/api/useCommand.ts'
 import { getAccessToken } from '../../shared/auth/staffAuth.ts'
 import { useStaffAuth } from '../../shared/auth/StaffAuthContext.ts'
+import type { CurrentStaff } from '../../shared/auth/useCurrentStaff.ts'
 import { employmentTypes, paymentTypes } from './vocabulary.ts'
 
 const required = 'Toto pole je povinné.'
@@ -73,12 +74,33 @@ export interface StaffUser {
 }
 
 /** The staff with the Recruiter role, the people a job post's recruiter is chosen from. */
-export function useRecruiters() {
+export function useRecruiters(currentStaff?: CurrentStaff) {
   const auth = useStaffAuth()
+  const isRecruiter =
+    currentStaff?.roles.includes('Recruiter') &&
+    !currentStaff.roles.some((role) =>
+      ['HiringManager', 'Admin'].includes(role),
+    )
 
   return useQuery({
-    queryKey: ['recruitment', 'staff-users', 'Recruiter'],
+    queryKey: [
+      'recruitment',
+      'staff-users',
+      isRecruiter ? currentStaff?.id : 'Recruiter',
+    ],
+    enabled: !!currentStaff,
     queryFn: async () => {
+      if (isRecruiter && currentStaff) {
+        return [
+          {
+            id: currentStaff.id,
+            displayName:
+              currentStaff.name ?? currentStaff.username ?? currentStaff.id,
+            roles: ['Recruiter'],
+          },
+        ]
+      }
+
       const { users } = await request<{ users: StaffUser[] }>(
         '/api/v1/recruitment/staff-users?role=Recruiter',
         { headers: { Authorization: `Bearer ${await getAccessToken(auth)}` } },
