@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Input,
   makeStyles,
   MessageBar,
@@ -16,6 +17,7 @@ import {
 import {
   employmentTypeLabels,
   employmentTypes,
+  formatSalary,
 } from '../../../features/recruitment/vocabulary.ts'
 import { ApiError } from '../../../shared/api/http.ts'
 import { useCurrentStaff } from '../../../shared/auth/useCurrentStaff.ts'
@@ -95,7 +97,7 @@ const useStyles = makeStyles({
   },
   status: {
     display: 'inline-block',
-    padding: '4px 10px',
+    padding: '7px 14px',
     borderRadius: '999px',
     fontSize: '13px',
     fontWeight: 700,
@@ -145,6 +147,7 @@ export function StaffJobPostsPage() {
   const { data: me } = useCurrentStaff()
   const [search, setSearch] = useState('')
   const [employmentType, setEmploymentType] = useState('')
+  const [showClosed, setShowClosed] = useState(false)
   const canManage =
     me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ??
     false
@@ -157,10 +160,11 @@ export function StaffJobPostsPage() {
         )
         return (
           matchesSearch &&
-          (!employmentType || post.employmentType === employmentType)
+          (!employmentType || post.employmentType === employmentType) &&
+          (showClosed || post.status !== 'closed')
         )
       }),
-    [data?.items, employmentType, normalizedSearch],
+    [data?.items, employmentType, normalizedSearch, showClosed],
   )
 
   return (
@@ -211,6 +215,11 @@ export function StaffJobPostsPage() {
             </option>
           ))}
         </Select>
+        <Checkbox
+          checked={showClosed}
+          label="Zobraziť uzatvorené"
+          onChange={(_, data) => setShowClosed(data.checked === true)}
+        />
       </div>
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
@@ -219,13 +228,14 @@ export function StaffJobPostsPage() {
               <th className={styles.headerCell}>Názov pozície</th>
               <th className={styles.headerCell}>Lokalita</th>
               <th className={styles.headerCell}>Typ úväzku</th>
+              <th className={styles.headerCell}>Mzda</th>
               <th className={styles.headerCell}>Stav</th>
             </tr>
           </thead>
           <tbody>
             {isPending && (
               <tr>
-                <td className={styles.empty} colSpan={4}>Načítava sa…</td>
+                <td className={styles.empty} colSpan={5}>Načítava sa…</td>
               </tr>
             )}
             {!isPending &&
@@ -241,6 +251,9 @@ export function StaffJobPostsPage() {
                     {employmentTypeLabels[post.employmentType]}
                   </td>
                   <td className={styles.cell}>
+                    {formatSalary(post.salary, post.paymentType)}
+                  </td>
+                  <td className={styles.cell}>
                     <span
                       className={`${styles.status} ${styles[post.status]}`}
                     >
@@ -251,7 +264,7 @@ export function StaffJobPostsPage() {
               ))}
             {!isPending && items.length === 0 && (
               <tr>
-                <td className={styles.empty} colSpan={4}>
+                <td className={styles.empty} colSpan={5}>
                   Nenašli sa žiadne pracovné ponuky.
                 </td>
               </tr>
