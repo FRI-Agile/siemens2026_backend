@@ -138,8 +138,8 @@ Výhodou je angličtina na komunikatívnej úrovni.',
 -- recruitment.candidate, recruitment.application
 -- 7 candidates. Six applied to 'Elektrotechnik údržby', one in each application status, so the staff job post detail
 -- shows the whole pipeline; two of them applied to 'Vývojár softvéru (.NET)' as well. Names carry accents so the
--- accent-insensitive search has something to find ("kasuba", "stefanik"). No application_document rows: their blobs
--- would have to exist in the local Azurite container, and staff only see scanned files anyway.
+-- accent-insensitive search has something to find ("kasuba", "stefanik"). No application_document rows: their files
+-- would have to exist in files.file and in the local Azurite container, and staff only see scanned files anyway.
 -- ---------------------------------------------------------------------------
 INSERT INTO recruitment.candidate (first_name, last_name, email, phone_number, created_at)
 VALUES

@@ -16,6 +16,7 @@
 -- Schemas (one per module / bounded context, plus the host-owned kernel)
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS kernel;
+CREATE SCHEMA IF NOT EXISTS files;
 CREATE SCHEMA IF NOT EXISTS recruitment;
 
 -- ---------------------------------------------------------------------------
@@ -76,6 +77,55 @@ CREATE TABLE kernel.idempotency (
 CREATE INDEX idx_idempotency_expires_at ON kernel.idempotency (expires_at);
 -- The default 20% dead-tuple threshold lets a churn table like this bloat between passes.
 ALTER TABLE kernel.idempotency SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
+
+
+-- ===========================================================================
+--  MODULE: files
+-- ===========================================================================
+
+-- file  (one uploaded object's metadata; docs/api/files/files.md)
+-- The bytes are in object storage under `object_key`, server-generated and never the client's file name. Other modules
+-- reference a file by `id` with no foreign key (a logical reference, conventions.md § Cross-module references); the
+-- owning module confirms and releases it through the Files module as the reference comes and goes.
+--
+-- No status column: a file is pending while `etag` is NULL (the upload URL is issued, nothing references it yet),
+-- confirmed once a row references it and its object checked out (`etag`, the real `size_bytes`), clean once ClamAV
+-- cleared it (`scanned_at`), and released once `deleted_at` is set. Only a confirmed, clean, live file is downloadable.
+-- The janitor reaps a file still pending after its upload URL expired and purges a released one after 7 days.
+--
+-- Uploaded by an anonymous applicant or a staff member, then written only by the system, so no `version` and no audit
+-- trigger; `uploaded_at` / `uploaded_by` stand for `created_at` / `created_by` (ADR-D008).
+CREATE TABLE files.file (
+    id            UUID         PRIMARY KEY DEFAULT uuidv7(),
+    purpose       TEXT         NOT NULL,  -- IFilePurpose.Key of the module that declared the kind, e.g. application_document
+    object_key    TEXT         NOT NULL,  -- uploads/{id}.ext in the module's bucket / container
+    file_name     TEXT         NOT NULL,  -- as uploaded, shown to staff and used for downloads
+    content_type  TEXT         NOT NULL,
+    size_bytes    BIGINT       NOT NULL,  -- declared until confirmed, then the object's real size
+    etag          TEXT,                   -- NULL while pending
+    scanned_at    TIMESTAMPTZ,            -- when ClamAV found it clean; NULL until then
+    uploaded_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    uploaded_by   UUID,                   -- staff Entra oid; NULL for an anonymous applicant
+    deleted_at    TIMESTAMPTZ,            -- released (soft delete)
+    deleted_by    UUID,                   -- staff Entra oid whose change released it; NULL for the system or an applicant
+    CONSTRAINT file_purpose_valid CHECK (btrim(purpose) <> ''),
+    CONSTRAINT file_object_key_valid CHECK (btrim(object_key) <> ''),
+    CONSTRAINT file_file_name_valid CHECK (btrim(file_name) <> ''),
+    CONSTRAINT file_content_type_valid CHECK (btrim(content_type) <> ''),
+    CONSTRAINT file_size_bytes_valid CHECK (size_bytes > 0),
+    -- Only a confirmed file is scanned.
+    CONSTRAINT file_scanned_at_valid CHECK (scanned_at IS NULL OR etag IS NOT NULL)
+);
+-- One row per stored object.
+CREATE UNIQUE INDEX uq_file_object_key ON files.file (object_key);
+-- The janitor's reap: pending files whose upload URL expired, oldest first. Partial, so it holds only the short-lived
+-- backlog of uploads in flight.
+CREATE INDEX idx_file_pending_uploaded_at ON files.file (uploaded_at) WHERE etag IS NULL;
+-- The scanner's backlog: confirmed live files ClamAV has not cleared, oldest first.
+CREATE INDEX idx_file_unscanned_uploaded_at
+    ON files.file (uploaded_at) WHERE etag IS NOT NULL AND scanned_at IS NULL AND deleted_at IS NULL;
+-- The janitor's retention sweep: released files, oldest release first.
+CREATE INDEX idx_file_deleted_at ON files.file (deleted_at) WHERE deleted_at IS NOT NULL;
 
 
 -- ===========================================================================
@@ -224,38 +274,70 @@ CREATE TRIGGER trg_application_set_audit
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
 
 -- application_document  (a file the candidate submitted with an application: CV, cover letter, …)
--- The file's metadata; the blob is in the module's container, named by `id` rather than by the user's file name
--- (ADR-A010). `status` follows the upload: `nahrávanie` once the upload URL is issued, `kontrola` once the
--- candidate confirms it and its size and type check out, `overený` once ClamAV finds it clean. Staff see `overený`
--- documents only. An infected file is deleted with its row, and so is an upload not confirmed within an hour. The
--- codes are the Slovak terms as written (ADR-D009).
+-- What the document is (`type`) and which file it is (`file_id`). The file itself — its name, type, size, bytes and
+-- malware scan — belongs to the Files module (`files.file`), referenced logically with no foreign key. The entity is
+-- change-captured, so the Files module confirms the file when a row gains it and releases it when the row goes, through
+-- this module's outbox (docs/api/files/files.md §9). The codes are the Slovak terms as written (ADR-D009).
+--
+-- A row deleted by the cascade from `application` (and so from `candidate`) is not captured: a feature deleting either
+-- publishes `files_released` with the documents' file ids in the same transaction.
 --
 -- Written by the anonymous candidate and then only by the system, so neither `created_by` nor `updated_by`
--- (ADR-D008); `version` still guards the status moves against a pruner and a confirmation racing.
+-- (ADR-D008).
 CREATE TABLE recruitment.application_document (
-    id              UUID         PRIMARY KEY DEFAULT uuidv7(),  -- also the blob's name
+    id              UUID         PRIMARY KEY DEFAULT uuidv7(),
     application_id  UUID         NOT NULL,
     type            TEXT         NOT NULL,  -- životopis / motivačný list / iné
-    file_name       TEXT         NOT NULL,  -- as uploaded, shown to staff and used for downloads
-    content_type    TEXT         NOT NULL,
-    size_bytes      BIGINT       NOT NULL,
-    status          TEXT         NOT NULL DEFAULT 'nahrávanie',  -- nahrávanie / kontrola / overený
+    file_id         UUID         NOT NULL,  -- files.file(id); logical, no FK
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ,
     version         SMALLINT     NOT NULL DEFAULT 1,
     CONSTRAINT application_document_application_fk
         FOREIGN KEY (application_id) REFERENCES recruitment.application (id) ON DELETE CASCADE,
-    CONSTRAINT application_document_type_valid CHECK (type IN ('životopis', 'motivačný list', 'iné')),
-    CONSTRAINT application_document_file_name_valid CHECK (btrim(file_name) <> ''),
-    CONSTRAINT application_document_content_type_valid CHECK (btrim(content_type) <> ''),
-    CONSTRAINT application_document_size_bytes_valid CHECK (size_bytes > 0),
-    CONSTRAINT application_document_status_valid CHECK (status IN ('nahrávanie', 'kontrola', 'overený'))
+    CONSTRAINT application_document_type_valid CHECK (type IN ('životopis', 'motivačný list', 'iné'))
 );
 -- An application's documents, and the FK's index for the cascade from application.
 CREATE INDEX idx_application_document_application_id ON recruitment.application_document (application_id);
--- The pruner's candidates: uploads never confirmed, oldest first. Partial, so it holds only the short-lived backlog.
-CREATE INDEX idx_application_document_created_at
-    ON recruitment.application_document (created_at) WHERE status = 'nahrávanie';
+-- A file belongs to one reference: two rows naming it would have the first one's release delete it under the second.
+CREATE UNIQUE INDEX uq_application_document_file_id ON recruitment.application_document (file_id);
 CREATE TRIGGER trg_application_document_set_audit
     BEFORE UPDATE ON recruitment.application_document
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
+
+-- outbox_message  (the module's transactional outbox; conventions.md § Outbox pattern)
+-- One row per captured change of a tracked entity (today `application_document`) and per published event, written in
+-- the same transaction as the change; the API's dispatcher delivers it to other modules' handlers and deletes it.
+-- `attempts` / `next_attempt_at` / `last_error` record failed deliveries: the row is retried with a backoff and left
+-- for an operator after 10 attempts.
+CREATE TABLE recruitment.outbox_message (
+    id               UUID         PRIMARY KEY DEFAULT uuidv7(),
+    kind             TEXT         NOT NULL DEFAULT 'row_change',
+    module           TEXT         NOT NULL,
+    event            TEXT         NOT NULL,
+    entity_type      TEXT         NOT NULL,
+    entity_id        TEXT         NOT NULL,
+    action           TEXT         NOT NULL,
+    old_value        JSONB,
+    new_value        JSONB,
+    actor_type       TEXT         NOT NULL,
+    actor_user_id    UUID,
+    actor_service    TEXT,
+    trace_id         TEXT,
+    occurred_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    version          SMALLINT     NOT NULL DEFAULT 0,
+    attempts         SMALLINT     NOT NULL DEFAULT 0,
+    next_attempt_at  TIMESTAMPTZ,
+    last_error       TEXT,
+    CONSTRAINT outbox_message_kind_valid CHECK (kind IN ('row_change', 'domain_event', 'audit_event')),
+    CONSTRAINT outbox_message_action_valid CHECK (action IN ('insert', 'update', 'delete')),
+    CONSTRAINT outbox_message_actor_type_valid
+        CHECK (actor_type IN ('user', 'service', 'system', 'anonymous', 'unknown')),
+    CONSTRAINT outbox_message_actor_valid CHECK (
+        (actor_type = 'user') = (actor_user_id IS NOT NULL)
+        AND (actor_type = 'service') = (actor_service IS NOT NULL)),
+    CONSTRAINT outbox_message_actor_user_id_not_empty
+        CHECK (actor_user_id <> '00000000-0000-0000-0000-000000000000'),
+    CONSTRAINT outbox_message_attempts_valid CHECK (attempts >= 0)
+);
+-- Every insert, update and delete is short-lived churn, like kernel.idempotency.
+ALTER TABLE recruitment.outbox_message SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
