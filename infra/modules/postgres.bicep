@@ -63,7 +63,7 @@ resource extensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@20
   parent: server
   name: 'azure.extensions'
   properties: {
-    value: 'pg_trgm'
+    value: 'pg_trgm,unaccent'
     source: 'user-override'
   }
 }

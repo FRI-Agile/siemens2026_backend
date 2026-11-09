@@ -59,7 +59,7 @@ Roles are **app roles** defined on the HealthyHires API app registration and ass
 | ---------------- | --- | ----------- |
 | `Recruiter` | Recruiters (*náboroví pracovníci*), who run the hiring process | TODO — define per module |
 | `HiringManager` | Hiring managers (*prijímajúci manažéri*), for whose team a position is filled | TODO — define per module |
-| `Admin` | Administrators (*administrátori*) | Creates staff accounts (Recruitment, `POST /api/v1/recruitment/staff-users`); TODO — the rest per module |
+| `Admin` | Administrators (*administrátori*) | Creates staff accounts (Recruitment, `POST /api/v1/recruitment/staff-users`) and lists them with their state (`GET /api/v1/recruitment/staff-users/manage`); TODO — the rest per module |
 
 Roles are assigned to individual users. Group-based assignment requires Entra ID P1, which a free tenant lacks.
 
@@ -125,7 +125,7 @@ Each permission is an Azure role assigned to the managed identity, scoped as nar
 | PostgreSQL | Login role for the managed identity, member of the NOLOGIN role `healthyhires_app`; created by the server's Entra admin (`scripts/azure/db-grant-identity.sh`) | The module schemas listed in `infra/db-schemas.txt`, owned by `healthyhires_app`; no right to create other schemas | API | Log in without a password ([ADR-006](ADR.md#adr-006-primary-database--postgresql-managed)) |
 | ACS Email | A role on the ACS resource that allows sending email (least-privilege role TODO) | The ACS resource | API | Send notification emails ([ADR-010](ADR.md#adr-010-email-delivery--azure-communication-services-email)) |
 | Azure OpenAI | Cognitive Services OpenAI User | The Azure OpenAI resource | API | Call the deployed model to score CVs; cannot read keys or change deployments ([ADR-024](ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)) |
-| Microsoft Graph | Application permissions `User.ReadWrite.All`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`; granted by a Privileged Role Administrator (`scripts/azure/graph-grant-identity.sh`) | The tenant | API | Create staff accounts and assign them an app role on the HealthyHires API (§2.4); list the staff and their roles, e.g. to check a job post's recruiter (`Application.Read.All` covers reading the role assignments) |
+| Microsoft Graph | Application permissions `User.ReadWrite.All`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`; granted by a Privileged Role Administrator (`scripts/azure/graph-grant-identity.sh`) | The tenant | API | Create staff accounts and assign them an app role on the HealthyHires API (§2.4); list the staff and their roles, e.g. to check a job post's recruiter (`Application.Read.All` covers reading the role assignments), and their accounts' sign-in name and state for administrators (`User.ReadWrite.All` covers reading them) |
 | Application Insights | Monitoring Metrics Publisher | The Application Insights resource | Collector | Only if the Collector sends telemetry with Entra authentication (see §9) |
 
 ### 4.3 The shared-identity risk

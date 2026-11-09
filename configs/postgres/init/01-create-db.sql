@@ -24,6 +24,8 @@ CREATE SCHEMA IF NOT EXISTS recruitment;
 -- pg_trgm: the trigram GIN indexes behind free-text search (conventions.md § Search indexes). In `public`, so every
 -- module schema reaches it the same way; its operator classes are always written schema-qualified.
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+-- unaccent: accent-insensitive search, through each module's immutable_unaccent wrapper (ADR-D007).
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
 
 
 -- ===========================================================================
@@ -93,6 +95,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- immutable_unaccent  (accent-insensitive search, ADR-D007)
+-- unaccent() is only STABLE, as it finds its dictionary through search_path, so an index cannot use it. This wrapper
+-- names the function and dictionary by schema and is declared IMMUTABLE, so a trigram index can store the unaccented
+-- text. A search compares immutable_unaccent(column) with immutable_unaccent(term). In the module's schema like the
+-- audit trigger (ADR-D003), where the application role may create it. Editing the unaccent rules file means
+-- rebuilding the indexes that use it (REINDEX).
+CREATE OR REPLACE FUNCTION recruitment.immutable_unaccent(text)
+RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+RETURN public.unaccent('public.unaccent'::regdictionary, $1);
+
 -- job_post  (a position the company is hiring for)
 -- Created by a hiring manager. `status` is `draft` (koncept, seen by staff only), `published` (visible to applicants)
 -- or `closed` (no longer accepting applicants, hidden from them); `draft -> published <-> closed`.
@@ -138,4 +151,109 @@ CREATE INDEX idx_job_post_title ON recruitment.job_post USING gin (title public.
 CREATE INDEX idx_job_post_location ON recruitment.job_post USING gin (location public.gin_trgm_ops);
 CREATE TRIGGER trg_job_post_set_audit
     BEFORE UPDATE ON recruitment.job_post
+    FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
+
+-- candidate  (a person who applied to at least one job post)
+-- Applicants are anonymous (ADD §2), so a row is created by the first application carrying its e-mail and has no
+-- `created_by` (ADR-D008); staff may correct it later, hence `updated_by`. One row per e-mail, compared without case:
+-- a later application with a known e-mail is linked to the existing row and does not change it, as nothing proves
+-- the applicant owns the address.
+--
+-- `display_name` is generated from the two name parts, so the name search has one column to index and match
+-- ("Martin Kaš…" as well as "Kašuba"). `phone_number` is E.164 (`+421905123456`), normalised by the application.
+CREATE TABLE recruitment.candidate (
+    id            UUID         PRIMARY KEY DEFAULT uuidv7(),
+    first_name    TEXT         NOT NULL,
+    last_name     TEXT         NOT NULL,
+    display_name  TEXT         NOT NULL GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED,
+    email         TEXT         NOT NULL,
+    phone_number  TEXT         NOT NULL,  -- E.164
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ,
+    updated_by    UUID,
+    version       SMALLINT     NOT NULL DEFAULT 1,
+    CONSTRAINT candidate_first_name_valid CHECK (btrim(first_name) <> ''),
+    CONSTRAINT candidate_last_name_valid CHECK (btrim(last_name) <> ''),
+    CONSTRAINT candidate_email_valid CHECK (email ~ '^[^@\s]+@[^@\s]+$'),
+    CONSTRAINT candidate_phone_number_valid CHECK (phone_number ~ '^\+[1-9][0-9]{6,14}$')
+);
+-- One candidate per e-mail, regardless of case; also the lookup a new application makes.
+CREATE UNIQUE INDEX uq_candidate_email ON recruitment.candidate (lower(email));
+-- The candidate search, `immutable_unaccent(display_name) ILIKE immutable_unaccent('%…%') OR` the same on `email`:
+-- a trigram index per column over the unaccented text, combined with a BitmapOr like the job post search.
+CREATE INDEX idx_candidate_display_name
+    ON recruitment.candidate USING gin (recruitment.immutable_unaccent(display_name) public.gin_trgm_ops);
+CREATE INDEX idx_candidate_email
+    ON recruitment.candidate USING gin (recruitment.immutable_unaccent(email) public.gin_trgm_ops);
+CREATE TRIGGER trg_candidate_set_audit
+    BEFORE UPDATE ON recruitment.candidate
+    FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
+
+-- application  (a candidate's application to one job post; žiadosť)
+-- Submitted by the anonymous candidate to a published post (checked by the application), so no `created_by`
+-- (ADR-D008). Staff then move it through the hiring pipeline: `new -> screening -> interview -> offer -> hired`, and
+-- `rejected` from any step before `hired`. A candidate applies to a post once.
+--
+-- The job post must not disappear under its applications, so RESTRICT; posts are closed, never deleted. An
+-- application means nothing without its candidate, so erasing a candidate erases their applications.
+CREATE TABLE recruitment.application (
+    id            UUID         PRIMARY KEY DEFAULT uuidv7(),
+    job_post_id   UUID         NOT NULL,
+    candidate_id  UUID         NOT NULL,
+    status        TEXT         NOT NULL DEFAULT 'new',  -- new / screening / interview / offer / hired / rejected
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ,
+    updated_by    UUID,
+    version       SMALLINT     NOT NULL DEFAULT 1,
+    CONSTRAINT application_job_post_fk
+        FOREIGN KEY (job_post_id) REFERENCES recruitment.job_post (id) ON DELETE RESTRICT,
+    CONSTRAINT application_candidate_fk
+        FOREIGN KEY (candidate_id) REFERENCES recruitment.candidate (id) ON DELETE CASCADE,
+    CONSTRAINT application_status_valid CHECK (status IN (
+        'new', 'screening', 'interview', 'offer', 'hired', 'rejected'))
+);
+-- One application per candidate and post. Leading with the post, it is also the job post detail's lookup of the
+-- post's applications.
+CREATE UNIQUE INDEX uq_application_job_post_id_candidate_id
+    ON recruitment.application (job_post_id, candidate_id);
+-- A candidate's applications, and the FK's index for the cascade from candidate.
+CREATE INDEX idx_application_candidate_id ON recruitment.application (candidate_id);
+CREATE TRIGGER trg_application_set_audit
+    BEFORE UPDATE ON recruitment.application
+    FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
+
+-- application_document  (a file the candidate submitted with an application: CV, cover letter, …)
+-- The file's metadata; the blob is in the module's container, named by `id` rather than by the user's file name
+-- (ADR-A010). `status` follows the upload: `uploading` once the upload URL is issued, `scanning` once the candidate
+-- confirms it and its size and type check out, `clean` once ClamAV reports so. Staff see `clean` documents only. An
+-- infected file is deleted with its row, and so is an upload not confirmed within an hour.
+--
+-- Written by the anonymous candidate and then only by the system, so neither `created_by` nor `updated_by`
+-- (ADR-D008); `version` still guards the status moves against a pruner and a confirmation racing.
+CREATE TABLE recruitment.application_document (
+    id              UUID         PRIMARY KEY DEFAULT uuidv7(),  -- also the blob's name
+    application_id  UUID         NOT NULL,
+    type            TEXT         NOT NULL,  -- cv / cover_letter / other
+    file_name       TEXT         NOT NULL,  -- as uploaded, shown to staff and used for downloads
+    content_type    TEXT         NOT NULL,
+    size_bytes      BIGINT       NOT NULL,
+    status          TEXT         NOT NULL DEFAULT 'uploading',  -- uploading / scanning / clean
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ,
+    version         SMALLINT     NOT NULL DEFAULT 1,
+    CONSTRAINT application_document_application_fk
+        FOREIGN KEY (application_id) REFERENCES recruitment.application (id) ON DELETE CASCADE,
+    CONSTRAINT application_document_type_valid CHECK (type IN ('cv', 'cover_letter', 'other')),
+    CONSTRAINT application_document_file_name_valid CHECK (btrim(file_name) <> ''),
+    CONSTRAINT application_document_content_type_valid CHECK (btrim(content_type) <> ''),
+    CONSTRAINT application_document_size_bytes_valid CHECK (size_bytes > 0),
+    CONSTRAINT application_document_status_valid CHECK (status IN ('uploading', 'scanning', 'clean'))
+);
+-- An application's documents, and the FK's index for the cascade from application.
+CREATE INDEX idx_application_document_application_id ON recruitment.application_document (application_id);
+-- The pruner's candidates: uploads never confirmed, oldest first. Partial, so it holds only the short-lived backlog.
+CREATE INDEX idx_application_document_created_at
+    ON recruitment.application_document (created_at) WHERE status = 'uploading';
+CREATE TRIGGER trg_application_document_set_audit
+    BEFORE UPDATE ON recruitment.application_document
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();

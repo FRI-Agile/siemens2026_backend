@@ -112,3 +112,41 @@ allow-lists it in the server's `azure.extensions` parameter.
   written schema-qualified, e.g. `public.gin_trgm_ops`.
 - `db-grant-identity.sh` reads the extensions from the DDL, so a new one is added there and to `azure.extensions`;
   `azure.extensions` is a list, added to rather than replaced.
+
+---
+
+## ADR-D007 — Accent-insensitive search through an immutable `unaccent` wrapper
+
+**Date:** 2026-11-09 · **Status:** accepted · **Follows up:** ADR-D006
+
+Staff search candidates by name and e-mail, and Slovak names carry accents a searcher often leaves out ("Kasuba" for
+"Kašuba"). The `unaccent` extension strips them, created `WITH SCHEMA public` by the operator like `pg_trgm`
+(ADR-D006) and allow-listed in `azure.extensions`.
+
+- `unaccent()` is only `STABLE` — it finds its dictionary through `search_path` — so an index cannot store its result.
+  `recruitment.immutable_unaccent(text)` calls `public.unaccent('public.unaccent'::regdictionary, $1)`, naming both by
+  schema, and is declared `IMMUTABLE`; the trigram indexes are built over it, and a search wraps both the column and
+  the term in it. EF Core maps it as `SearchFunctions.Unaccent`.
+- The wrapper is a copy in the module's schema, like the audit trigger (ADR-D003), not in `public`: the application
+  role owns `recruitment` and may create it there, which it may not in `public`, and the module stays
+  self-contained when extracted.
+- Editing the `unaccent` rules file would change what the function returns for stored rows, so it means `REINDEX`ing
+  the indexes over it. Nobody edits it today.
+
+---
+
+## ADR-D008 — Rows an anonymous applicant creates have no `created_by`
+
+**Date:** 2026-11-09 · **Status:** accepted
+
+Applicants have no account ([ADD §2](../architecture/ADD.md#2-purpose)), so the rows an application creates —
+`candidate`, `application`, `application_document` — have no user to put in `created_by`.
+
+- These tables leave the column out rather than make it nullable: it would be `NULL` on every row, and a sentinel id
+  would pretend to be a user. Who created the row is implied by the table.
+- `candidate` and `application` keep `updated_by`, because staff edit them. `application_document` drops it too: only
+  the system moves its status.
+- `version` and the audit trigger stay on all three. A candidate is identified by e-mail (`uq_candidate_email`), and a
+  later application with a known e-mail is linked to the existing candidate without changing it, since nothing proves
+  the applicant owns the address.
+
