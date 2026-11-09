@@ -13,6 +13,7 @@ internal sealed class FakeStaffDirectory : IStaffDirectory
     public List<(Guid UserId, string Role)> Assigned { get; } = [];
     public List<Guid> Deleted { get; } = [];
     public List<StaffMember> Staff { get; } = [];
+    public List<StaffMemberAccount> Accounts { get; } = [];
     public Exception? AssignFailure { get; set; }
     public Exception? DeleteFailure { get; set; }
 
@@ -36,6 +37,9 @@ internal sealed class FakeStaffDirectory : IStaffDirectory
 
     public Task<IReadOnlyList<StaffMember>> ListStaffAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<StaffMember>>(Staff);
+
+    public Task<IReadOnlyList<StaffMemberAccount>> ListStaffAccountsAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<StaffMemberAccount>>(Accounts);
 
     public Task DeleteUserAsync(Guid userId, CancellationToken ct)
     {
