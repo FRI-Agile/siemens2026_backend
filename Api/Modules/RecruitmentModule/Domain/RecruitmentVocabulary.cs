@@ -80,3 +80,60 @@ public static class EmploymentTypes
     /// <summary>Self-employed contractor (<i>živnosť</i>).</summary>
     public const string SelfEmployed = "self_employed";
 }
+
+/// <summary>Where an application is in the hiring pipeline (<c>application.status</c>).</summary>
+/// <remarks>
+/// <c>nová žiadosť → predvýber → pohovor → ponuka → prijatý</c>, and <c>odmietnutý</c> from any step before
+/// <c>prijatý</c>. The application enforces the moves; the table only guards the value set. The values are the Slovak
+/// terms as written, diacritics included (ADR-D009).
+/// </remarks>
+public static class ApplicationStatuses
+{
+    /// <summary>Submitted, not yet looked at (<i>nová žiadosť</i>).</summary>
+    public const string New = "nová žiadosť";
+
+    /// <summary>Shortlisted (<i>predvýber</i>).</summary>
+    public const string Screening = "predvýber";
+
+    /// <summary>Invited to an interview (<i>pohovor</i>).</summary>
+    public const string Interview = "pohovor";
+
+    /// <summary>Made an offer (<i>ponuka</i>).</summary>
+    public const string Offer = "ponuka";
+
+    /// <summary>Accepted the offer and was hired (<i>prijatý</i>).</summary>
+    public const string Hired = "prijatý";
+
+    /// <summary>Turned down (<i>odmietnutý</i>).</summary>
+    public const string Rejected = "odmietnutý";
+}
+
+/// <summary>What a file submitted with an application is (<c>application_document.type</c>; Slovak codes, ADR-D009).</summary>
+public static class ApplicationDocumentTypes
+{
+    /// <summary>Curriculum vitae (<i>životopis</i>).</summary>
+    public const string Cv = "životopis";
+
+    /// <summary>Cover letter (<i>motivačný list</i>).</summary>
+    public const string CoverLetter = "motivačný list";
+
+    /// <summary>Anything else: certificates, references, a portfolio.</summary>
+    public const string Other = "iné";
+}
+
+/// <summary>Where a submitted file is in its upload (<c>application_document.status</c>, ADR-A010).</summary>
+/// <remarks>
+/// <c>nahrávanie → kontrola → overený</c>. An infected file is deleted with its row, and so is an upload not confirmed
+/// within an hour. The values are the Slovak terms as written (ADR-D009).
+/// </remarks>
+public static class ApplicationDocumentStatuses
+{
+    /// <summary>The upload URL is issued; the candidate has not confirmed the upload yet (<i>nahrávanie</i>).</summary>
+    public const string Uploading = "nahrávanie";
+
+    /// <summary>Confirmed and checked for size and type; waiting for ClamAV (<i>antivírusová kontrola</i>). Hidden from staff.</summary>
+    public const string Scanning = "kontrola";
+
+    /// <summary>ClamAV found it clean (<i>overený</i>); staff may download it.</summary>
+    public const string Clean = "overený";
+}
