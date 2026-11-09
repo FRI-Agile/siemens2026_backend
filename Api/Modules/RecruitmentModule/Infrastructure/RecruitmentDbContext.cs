@@ -9,9 +9,16 @@ public sealed class RecruitmentDbContext(DbContextOptions<RecruitmentDbContext> 
 {
     public DbSet<JobPost> JobPosts => Set<JobPost>();
 
+    public DbSet<Candidate> Candidates => Set<Candidate>();
+
+    public DbSet<Application> Applications => Set<Application>();
+
+    public DbSet<ApplicationDocument> ApplicationDocuments => Set<ApplicationDocument>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(ModuleTypes.ModuleName);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RecruitmentDbContext).Assembly);
+        modelBuilder.AddSearchFunctions();
     }
 }
