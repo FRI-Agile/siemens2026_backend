@@ -1,4 +1,5 @@
 using Kernel.Auth;
+using Kernel.Outbox;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
@@ -58,6 +59,8 @@ internal static class StaffAuthentication
         // Who is acting, for handlers that stamp created_by/updated_by from the token rather than the request.
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton<ICurrentUser, HttpContextCurrentUser>();
+        // ...and who to attribute a captured change to on the outbox, applicants and the system included.
+        builder.Services.AddSingleton<ICurrentActor, HttpContextCurrentActor>();
 
         builder.Services.AddAuthorization();
         builder.Services.AddOptions<AuthorizationOptions>()
