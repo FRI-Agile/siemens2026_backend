@@ -12,7 +12,7 @@ internal static class JobPostQueryExtensions
         if (string.IsNullOrWhiteSpace(search))
             return posts;
 
-        string pattern = $"%{EscapeLike(search.Trim())}%";
+        string pattern = LikePatterns.Containing(search);
         return posts.Where(p => EF.Functions.ILike(p.Title, pattern) || EF.Functions.ILike(p.Location, pattern));
     }
 
@@ -22,10 +22,4 @@ internal static class JobPostQueryExtensions
     /// </summary>
     public static IOrderedQueryable<JobPost> NewestFirst(this IQueryable<JobPost> posts) =>
         posts.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
-
-    /// <summary>Makes the caller's text match literally: <c>%</c> and <c>_</c> are LIKE wildcards, <c>\</c> its escape.</summary>
-    private static string EscapeLike(string text) =>
-        text.Replace(@"\", @"\\", StringComparison.Ordinal)
-            .Replace("%", @"\%", StringComparison.Ordinal)
-            .Replace("_", @"\_", StringComparison.Ordinal);
 }

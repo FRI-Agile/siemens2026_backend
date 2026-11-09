@@ -19,6 +19,9 @@ internal sealed class GraphStaffDirectory(GraphServiceClient graph, IOptions<Sta
     /// <summary>Attempts at an app-role assignment; see <see cref="AssignAppRoleAsync"/>.</summary>
     private const int AssignmentAttempts = 4;
 
+    /// <summary>The most values Graph accepts in one <c>in</c> filter; see <see cref="ListStaffAccountsAsync"/>.</summary>
+    private const int FilterValuesPerCall = 15;
+
     /// <inheritdoc />
     public Task<bool> UserExistsAsync(string username, CancellationToken ct) =>
         CallAsync("overiť účet", async () =>
@@ -117,6 +120,41 @@ internal sealed class GraphStaffDirectory(GraphServiceClient graph, IOptions<Sta
                 g.Key,
                 g.First().PrincipalDisplayName ?? string.Empty,
                 g.Select(a => roles[a.AppRoleId!.Value]).Distinct().Order(StringComparer.Ordinal).ToList()))
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StaffMemberAccount>> ListStaffAccountsAsync(CancellationToken ct)
+    {
+        IReadOnlyList<StaffMember> staff = await ListStaffAsync(ct);
+
+        Dictionary<Guid, User> users = await CallAsync("načítať účty zamestnancov", async () =>
+        {
+            Dictionary<Guid, User> found = [];
+            foreach (StaffMember[] chunk in staff.Chunk(FilterValuesPerCall))
+            {
+                // Fewer values than one page holds, so each answer is complete.
+                UserCollectionResponse? page = await graph.Users.GetAsync(r =>
+                {
+                    r.QueryParameters.Filter = $"id in ({string.Join(',', chunk.Select(s => $"'{s.Id}'"))})";
+                    r.QueryParameters.Select = ["id", "displayName", "userPrincipalName", "accountEnabled", "createdDateTime"];
+                }, ct);
+                foreach (User user in page?.Value ?? [])
+                    found[Guid.Parse(user.Id!)] = user;
+            }
+
+            return found;
+        }, ct);
+
+        // An account deleted after the assignments were read is gone, and Entra drops its assignments with it.
+        return staff
+            .Where(s => users.ContainsKey(s.Id))
+            .Select(s =>
+            {
+                User user = users[s.Id];
+                return new StaffMemberAccount(s.Id, user.DisplayName ?? s.DisplayName, user.UserPrincipalName ?? string.Empty,
+                    s.Roles, user.AccountEnabled ?? false, user.CreatedDateTime);
+            })
             .ToList();
     }
 
