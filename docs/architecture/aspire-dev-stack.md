@@ -19,7 +19,7 @@ The stack runs the **backend only**. The frontend runs on its own against the AP
 
 ```
 postgres ─────── database healthyhires (one schema per module)
-storage ──────── Azurite → blobs (one container per module)
+storage ──────── Azurite → blobs (the Files module's container `files`)
 mailpit ──────── catches every e-mail the API sends
 clamav ───────── clamd; signatures in a named volume            not waited for
    │
@@ -29,7 +29,7 @@ apiservice ───── starts once postgres, blobs and mailpit are healthy
 | Resource | Where it listens | Stands in for | Notes |
 | -------- | ---------------- | ------------- | ----- |
 | `postgres` | `localhost:5432` | Azure Database for PostgreSQL ([ADR-006](ADR.md#adr-006-primary-database--postgresql-managed)) | Image `postgres:18`; no data volume — see §6 |
-| `storage` → `blobs` | `http://localhost:10000` | Azure Blob Storage ([ADR-005](ADR.md#adr-005-object-storage--azure-blob-storage)) | Azurite, the Aspire integration's image |
+| `storage` → `blobs` | `http://localhost:10000` | Azure Blob Storage ([ADR-005](ADR.md#adr-005-object-storage--azure-blob-storage)) | Azurite, the Aspire integration's image; the API creates the `files` container and a CORS rule at startup ([files.md §12.1](../api/files/files.md#121-object-storage)) |
 | `mailpit` | `http://localhost:8025` (inbox), `:1025` (SMTP) | ACS Email ([ADR-010](ADR.md#adr-010-email-delivery--azure-communication-services-email)) | Nothing ever leaves the machine |
 | `clamav` | `localhost:3310` (clamd) | the ClamAV container on the VM ([container-deployment.md §1.4](container-deployment.md#14-clamav-healthyhires-clamav)) | Image `clamav/clamav:1.5.4`, the same as on the VM — see §4 |
 | `apiservice` | `http://localhost:5180`; `https://localhost:7180` with the `https` launch profile | the API | `/scalar` for API docs, linked from the dashboard |
@@ -58,14 +58,14 @@ The API never reads an AppHost-specific setting. Aspire hands it ordinary config
 | Configuration key | From | Read by |
 | ----------------- | ---- | ------- |
 | `ConnectionStrings__healthyhires` | `postgres` → `healthyhires` | `AddNpgsqlDataSource("healthyhires")` |
-| `ConnectionStrings__blobs` | `storage` → `blobs` | `AddAzureBlobServiceClient("blobs")` |
+| `ConnectionStrings__blobs` | `storage` → `blobs` | `AddAzureBlobServiceClient("blobs")`, behind the Files module's `AddAzureBlobFileStorage` |
 | `ConnectionStrings__mailpit` | `mailpit` | nothing yet — reserved for the e-mail feature |
-| `services__clamav__tcp__0` | `clamav`'s `tcp` endpoint, through service discovery | nothing yet — reserved for the upload scanner |
+| `services__clamav__tcp__0` | `clamav`'s `tcp` endpoint, through service discovery | `AddFilesModule()`, for the upload scanner; `tcp://localhost:3310`, the VM's address, when unset |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | the Aspire dashboard | `AddServiceDefaults()` |
 | `Entra__TenantId`, `Entra__ApiClientId` | `Entra:TenantId`, `Entra:ApiClientId` in the AppHost's `appsettings.json` (identifiers, not secrets); a user secret overrides them | `AddStaffAuthentication()`; without them staff endpoints answer `401` |
 | `Entra__UserDomain` | `Entra:UserDomain`, a user secret of the AppHost | `AddRecruitmentModule()`; without it creating a staff user fails |
 
-**Start order.** `apiservice` waits for `postgres`, `blobs` and `mailpit`, so it never starts against a database that is not accepting connections. It deliberately does **not** wait for ClamAV: on the VM the API runs while ClamAV is down, and uploads stay in the "scanning" state until it is ready. The local stack keeps that behaviour rather than hiding it.
+**Start order.** `apiservice` waits for `postgres`, `blobs` and `mailpit`, so it never starts against a database that is not accepting connections. It deliberately does **not** wait for ClamAV: on the VM the API runs while ClamAV is down, and uploads stay unscanned, and so not downloadable, until it is ready ([files.md §10](../api/files/files.md#10-malware-scan-and-the-janitor)). The local stack keeps that behaviour rather than hiding it.
 
 **Health.** The Npgsql and Blob Storage integrations each register a health check, so `/health` passes only when the API reaches both. ClamAV and Mailpit are left out on purpose, because the application stays available without them. `/alive` checks only that the process responds. The dashboard reports `apiservice` from `/health`.
 
