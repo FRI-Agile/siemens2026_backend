@@ -381,7 +381,15 @@ When a module needs to react to something in another, it goes through the **tran
 
 Delivery is **at-least-once**, so every consumer is **idempotent**, keyed on the outbox row's `id`, and receives a batch in occurrence order. Consumers live in the module's `Infrastructure/Messaging/` and are registered by an assembly scan in `Add<Name>Module`.
 
-The outbox, change capture and the consumer contracts are not in the Kernel yet (`TODO`); they arrive with the Audit module.
+The pieces are in `Shared/Kernel/Outbox`, and the host calls `AddOutbox()` once:
+
+| To | Do |
+| --- | --- |
+| **Produce** row changes | Implement `IOutboxDbContext` on the module's context (`DbSet<OutboxMessage> OutboxMessages`, `modelBuilder.AddOutbox()`), add `.AddChangeCapture(sp)` to its options, call `services.AddOutboxProducer<TContext>()`, add `<module>.outbox_message` to the DDL, and mark each entity to capture `ITrackedEntity`. |
+| **Publish** an event | `db.PublishEvent(module, eventName, entityType, entityId, payload)` before the save that justifies it; the interceptor stamps the actor, trace and feature event. |
+| **Consume** | Implement `IEntityChangeHandler` (`Matches` on the contract strings, `HandleAsync` idempotent) in `Infrastructure/Messaging/`, and call `services.AddEntityChangeHandlers(assembly)` once. |
+
+A user-initiated transaction around a save runs inside `Database.CreateExecutionStrategy().ExecuteAsync(…)`, since the contexts retry on transient failures; the dispatcher is woken when it commits. The Files module is the first consumer ([files.md §9](files/files.md#9-confirm-and-release)); the Audit module will consume every `row_change` once it exists.
 
 If two modules need a small piece of *shared vocabulary* — a contract type, a role name, an interface the host resolves — it goes in `Shared/Kernel`, the only sanctioned shared surface.
 
@@ -430,7 +438,7 @@ Tests run against a **real PostgreSQL**, not an in-memory provider. The shared c
 The Kernel tests that pin the CQRS and endpoint machinery:
 
 | Tests | What they pin |
-| --- | --- |
+| ----- | ------------- |
 | `CqrsRegistrationTests` | The Scrutor scan registers each handler shape, `internal` ones included, as scoped. Command handlers are wrapped once, with the event scope outside validation. Queries are left alone. Decorating with nothing registered is a no-op. |
 | `ValidationDecoratorTests` | An invalid command never reaches its handler and carries a Slovak message per failure; a missing value reports only that it is required; the void form validates too |
 | `CommandValidationSchemaTransformerTests` | Exclusive bounds, open upper bounds, enums, lengths and messages carry over from the command to the request schema |
