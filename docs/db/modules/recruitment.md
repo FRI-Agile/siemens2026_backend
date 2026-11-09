@@ -13,7 +13,8 @@ and the module refers to them by their object id (`oid`).
 | [`job_post`](#job_post) | A position the company is hiring for: a draft, published or closed | **Documented** |
 | [`candidate`](#candidate) | A person who applied to at least one job post, one per e-mail | **Documented** |
 | [`application`](#application) | A candidate's application to one job post, and where it is in the hiring pipeline | **Documented** |
-| [`application_document`](#application_document) | A file submitted with an application (CV, cover letter, …) and its upload state | **Documented** |
+| [`application_document`](#application_document) | A file submitted with an application (CV, cover letter, …): its type and its `files.file` | **Documented** |
+| [`outbox_message`](#outbox_message) | The module's transactional outbox | **Documented** |
 
 The DDL is in `configs/postgres/init/01-create-db.sql` ([ADR-D002](../decision-log.md#adr-d002--the-schema-is-an-init-ddl-script-until-production));
 `RecruitmentDbContext` maps the tables with `ExcludeFromMigrations`. The schema is listed in `infra/db-schemas.txt`,
@@ -256,22 +257,20 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 
 ## `application_document`
 
-> A file the candidate submitted with an application — a CV, a cover letter or anything else — and where its upload
-> stands. The blob itself is in the module's Blob Storage container, named by `id`.
+> A file the candidate submitted with an application — a CV, a cover letter or anything else: what it is, and which file
+> it is. The file itself (name, type, size, bytes, malware scan) is the Files module's
+> [`files.file`](files.md), referenced by `file_id`.
 
-**Audit:** standard, without `created_by` and `updated_by` ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by)) · **Soft delete:** no
+**Audit:** standard, without `created_by` and `updated_by` ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by)) · **Soft delete:** no · **Change-captured:** yes
 
 **Columns**
 
 | Column | Type | Key | Null | Default | Description |
 | ------ | ---- | --- | ---- | ------- | ----------- |
-| `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID; also the blob's name ([ADR-A010](../../architecture/ADR-ASPNET.md#adr-a010-file-storage--azure-blob-storage-via-azure-sdk)) |
+| `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID |
 | `application_id` | `UUID` | FK | NO |  | The application the file belongs to |
 | `type` | `TEXT` |  | NO |  | What the file is — see CHECK |
-| `file_name` | `TEXT` |  | NO |  | The name it was uploaded under; shown to staff and given to downloads, never used as the blob's name |
-| `content_type` | `TEXT` |  | NO |  | The MIME type, checked against the blob on confirmation |
-| `size_bytes` | `BIGINT` |  | NO |  | The size, checked against the blob on confirmation |
-| `status` | `TEXT` |  | NO | `'nahrávanie'` | Where the upload stands — see CHECK |
+| `file_id` | `UUID` | UQ | NO |  | The file; logical reference → `files.file(id)`, no FK |
 
 **Value sets**
 
@@ -280,37 +279,30 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 | `type` | `životopis` | Curriculum vitae |
 | `type` | `motivačný list` | Cover letter |
 | `type` | `iné` | Anything else: certificates, references, a portfolio |
-| `status` | `nahrávanie` | The upload URL is issued; not confirmed yet |
-| `status` | `kontrola` | Confirmed, size and type match; waiting for ClamAV (*antivírusová kontrola*). Hidden from staff |
-| `status` | `overený` | ClamAV found it clean; staff may download it |
 
 The codes are the Slovak terms as written, diacritics included ([ADR-D009](../decision-log.md#adr-d009--new-value-sets-use-slovak-codes)). The application's
-copies are `ApplicationDocumentTypes` and `ApplicationDocumentStatuses` in `RecruitmentVocabulary.cs`; change both
-together.
+copy is `ApplicationDocumentTypes` in `RecruitmentVocabulary.cs`; change both together.
 
 **Foreign keys**
 
 | Column | References | On delete | Notes |
 | ------ | ---------- | --------- | ----- |
-| `application_id` | `recruitment.application(id)` | `CASCADE` | A file means nothing without its application; the blob is deleted by the application, as the database cannot reach it |
+| `application_id` | `recruitment.application(id)` | `CASCADE` | A file means nothing without its application; the cascade is invisible to change capture, so the deleting feature publishes `files_released` |
+| `file_id` | `files.file(id)` | — | **logical — no DB FK**; the Files module follows it through the outbox |
 
 **Constraints**
 
 | Name | Type | Definition | Purpose |
 | ---- | ---- | ---------- | ------- |
 | `application_document_type_valid` | CHECK | `type IN ('životopis','motivačný list','iné')` | Guards the value set |
-| `application_document_file_name_valid` | CHECK | `btrim(file_name) <> ''` | No blank file name |
-| `application_document_content_type_valid` | CHECK | `btrim(content_type) <> ''` | No blank content type |
-| `application_document_size_bytes_valid` | CHECK | `size_bytes > 0` | No empty files |
-| `application_document_status_valid` | CHECK | `status IN ('nahrávanie','kontrola','overený')` | Guards the value set |
 
 **Indexes**
 
 | Name | Columns | Type | Purpose |
 | ---- | ------- | ---- | ------- |
-| *(PK)* | `(id)` | btree | Lookup by id, e.g. for a download URL |
+| *(PK)* | `(id)` | btree | Lookup by id |
 | `idx_application_document_application_id` | `(application_id)` | btree | An application's documents; the cascade from `application` |
-| `idx_application_document_created_at` | `(created_at) WHERE status = 'nahrávanie'` | partial | The pruner's unconfirmed uploads, oldest first; holds only that short-lived backlog |
+| `uq_application_document_file_id` | `(file_id)` | unique | A file belongs to one reference: two rows naming it would have the first one's release delete it under the second |
 
 **Triggers**
 
@@ -320,9 +312,17 @@ together.
 
 **Notes**
 
-- **The upload lifecycle is ADR-A010's.** Issuing an upload URL inserts the row as `nahrávanie`; the candidate's
-  confirmation checks the blob's real size and type and moves it to `kontrola`; ClamAV's verdict moves it to
-  `overený`. An infected file, and an upload left `nahrávanie` for an hour, are deleted with their row. `version` keeps the
-  pruner and a late confirmation from both winning.
-- **Staff see `overený` files only**, so every staff read filters on it. Lengths and the allowed content types and sizes
-  are the application's rules, checked before the upload URL is issued.
+- **The file's lifecycle is the Files module's** ([files.md §9](../../api/files/files.md#9-confirm-and-release)). The
+  entity is an `ITrackedEntity`, and the module registers `FileId` as a file column accepting `application_document`
+  files. Inserting a row confirms its file once the outbox delivers the change; deleting it, or pointing it at another
+  file, releases the old one. The write handler calls `IFileReferences.ValidateAsync` before saving, so a bad upload fails
+  the write.
+- **Staff see clean files only:** a file is downloadable once ClamAV cleared it, which the download endpoint checks.
+- **Deletes the outbox cannot see.** Deleting an `application` or a `candidate` cascades to these rows in the database.
+  That feature reads the rows' `file_id`s first and publishes `files_released` in the same transaction.
+
+## `outbox_message`
+
+The module's transactional outbox, as defined once in [conventions.md § Outbox pattern](../conventions.md#outbox-pattern-outbox_message).
+Today it carries the changes of `application_document`, the only change-captured entity, and any `files_released`
+event the module publishes.

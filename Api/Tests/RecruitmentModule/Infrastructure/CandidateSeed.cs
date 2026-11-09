@@ -26,8 +26,6 @@ internal static class CandidateSeed
     {
         Id = Guid.CreateVersion7(),
         Type = type,
-        FileName = "zivotopis.pdf",
-        ContentType = "application/pdf",
-        SizeBytes = 120_000,
+        FileId = Guid.CreateVersion7(),
     };
 }

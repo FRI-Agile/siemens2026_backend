@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using FilesModule.Infrastructure;
 using Kernel.Idempotency;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -26,6 +27,21 @@ internal static class TestDb
     /// <summary>A fresh Recruitment context (the <c>recruitment</c> schema).</summary>
     public static RecruitmentDbContext NewRecruitmentContext() =>
         new(Options<RecruitmentDbContext>().Options);
+
+    /// <summary>A Recruitment context on an already-created database, e.g. with the change-capture interceptor.</summary>
+    /// <param name="connectionString">The connection string to use.</param>
+    /// <param name="interceptors">Interceptors to add, as the module's registration adds change capture.</param>
+    public static RecruitmentDbContext NewRecruitmentContextOn(string connectionString, params IInterceptor[] interceptors) =>
+        new(OptionsOn<RecruitmentDbContext>(connectionString).AddInterceptors(interceptors).Options);
+
+    /// <summary>A Files context on an already-created database.</summary>
+    /// <param name="connectionString">The connection string to use.</param>
+    public static FilesDbContext NewFilesContextOn(string connectionString) =>
+        new(OptionsOn<FilesDbContext>(connectionString).Options);
+
+    /// <summary>A fresh Files context (the <c>files</c> schema).</summary>
+    public static FilesDbContext NewFilesContext() =>
+        new(Options<FilesDbContext>().Options);
 
     /// <summary>A fresh, empty database cloned from the schema template; its connection string, for a test host.</summary>
     public static string NewDatabase()

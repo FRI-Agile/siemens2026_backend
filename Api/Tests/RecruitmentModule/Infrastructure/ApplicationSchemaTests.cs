@@ -30,7 +30,6 @@ public class ApplicationSchemaTests
 
         Assert.Equal(ApplicationStatuses.New, stored.Status);
         Assert.Equal("Martin Kašuba", stored.Candidate!.DisplayName);
-        Assert.All(stored.Documents, d => Assert.Equal(ApplicationDocumentStatuses.Uploading, d.Status));
         Assert.Equal(2, stored.Documents.Count);
     }
 

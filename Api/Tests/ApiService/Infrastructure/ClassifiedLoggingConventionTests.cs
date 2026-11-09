@@ -17,7 +17,7 @@ public class ClassifiedLoggingConventionTests
     /// out of the test project's reference graph fails here instead of silently going unchecked. Add each module
     /// here when it is created.
     /// </summary>
-    private static readonly string[] ProductionAssemblyNames = ["ApiService", "Kernel", "ServiceDefaults"];
+    private static readonly string[] ProductionAssemblyNames = ["ApiService", "Kernel", "ServiceDefaults", "FilesModule", "RecruitmentModule"];
 
     /// <summary>
     /// Parameter-name fragments that mean the value identifies, or can be linked to, a person. Deliberately short

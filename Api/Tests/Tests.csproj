@@ -21,6 +21,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="Testcontainers.Azurite" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
@@ -35,6 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ApiService\ApiService.csproj" />
+    <ProjectReference Include="..\Modules\FilesModule\FilesModule.csproj" />
     <ProjectReference Include="..\Modules\RecruitmentModule\RecruitmentModule.csproj" />
     <ProjectReference Include="..\Shared\Kernel\Kernel.csproj" />
   </ItemGroup>

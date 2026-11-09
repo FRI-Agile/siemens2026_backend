@@ -162,23 +162,24 @@ redelivers the row, so delivery is **at-least-once** and every consumer must be 
 
 | Column | Type | Key | Null | Default | Description |
 | ------ | ---- | --- | ---- | ------- | ----------- |
-| `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned time-ordered v7 GUID, also the delivered event's id and the dispatch cursor |
-| `kind` | `TEXT` | | NO | `'row_change'` | `row_change` = captured row mutation; `domain_event` = an event a module published for other modules; `audit_event` = an application audit event bound for the audit log (see notes) |
-| `module` | `TEXT` | | NO | | Owning module/schema (e.g. `recruitment`) |
-| `event` | `TEXT` | | NO | | The feature event that caused the row (the command's or worker's event name, or a published event's name); `unnamed` outside any command or worker. No module prefix |
-| `entity_type` | `TEXT` | | NO | | The table/entity the row is about |
-| `entity_id` | `TEXT` | | NO | | That entity's key as text (composite keys joined) |
-| `subject_id` | `UUID` | | YES | | Owning subject the change belongs to (`null` if not subject-scoped) |
-| `device_id` | `UUID` | | YES | | Client's device (`null` if the request carried none) |
-| `action` | `TEXT` | | NO | | See CHECK; `insert` for published and audit events |
-| `old_value` | `JSONB` | | YES | | Row before the change (`null` on insert and for events) |
-| `new_value` | `JSONB` | | YES | | Row after the change (`null` on delete); a domain event's payload; an audit event's envelope |
-| `actor_type` | `TEXT` | | NO | | Who caused it: `user` / `service` / `system` / `anonymous` / `unknown` |
-| `actor_user_id` | `UUID` | | YES | | The acting user; set exactly for a `user` actor |
-| `actor_service` | `TEXT` | | YES | | The acting service; set exactly for a `service` actor |
-| `trace_id` | `TEXT` | | YES | | W3C trace id active when the row was written |
-| `occurred_at` | `TIMESTAMPTZ` | | NO | `now()` | When the change occurred |
-| `version` | `SMALLINT` | | NO | `0` | Entity's optimistic-locking version at change time |
+| `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID, strictly increasing within the API process (`OutboxIds`), so it is the dispatch order; also the delivered change's id |
+| `kind` | `TEXT` |  | NO | `'row_change'` | `row_change` = captured row mutation; `domain_event` = an event a module published for other modules; `audit_event` = an application audit event bound for the audit log (see notes) |
+| `module` | `TEXT` |  | NO |  | Owning module/schema (e.g. `recruitment`) |
+| `event` | `TEXT` |  | NO |  | The feature event that caused the row (the command's or worker's event name, or a published event's name); `unnamed` outside any command or worker. No module prefix |
+| `entity_type` | `TEXT` |  | NO |  | The table/entity the row is about |
+| `entity_id` | `TEXT` |  | NO |  | That entity's key as text (composite keys joined) |
+| `action` | `TEXT` |  | NO |  | See CHECK; `insert` for published and audit events |
+| `old_value` | `JSONB` |  | YES |  | Row before the change (`null` on insert and for events) |
+| `new_value` | `JSONB` |  | YES |  | Row after the change (`null` on delete); a domain event's payload; an audit event's envelope |
+| `actor_type` | `TEXT` |  | NO |  | Who caused it: `user` / `service` / `system` / `anonymous` / `unknown` |
+| `actor_user_id` | `UUID` |  | YES |  | The acting user; set exactly for a `user` actor |
+| `actor_service` | `TEXT` |  | YES |  | The acting service; set exactly for a `service` actor |
+| `trace_id` | `TEXT` |  | YES |  | W3C trace id active when the row was written |
+| `occurred_at` | `TIMESTAMPTZ` |  | NO | `now()` | When the change occurred |
+| `version` | `SMALLINT` |  | NO | `0` | Entity's optimistic-locking version after the change (`0` for an entity without one) |
+| `attempts` | `SMALLINT` |  | NO | `0` | Failed deliveries so far; the dispatcher stops picking the row up at 10 |
+| `next_attempt_at` | `TIMESTAMPTZ` |  | YES |  | When a failed row may be tried again (exponential backoff, 5 s doubling up to 1 h); `null` for a row never tried |
+| `last_error` | `TEXT` |  | YES |  | `Handler: ExceptionType` of the last failure; never the exception's message, which may carry personal data |
 
 **Constraints**
 
@@ -189,12 +190,13 @@ redelivers the row, so delivery is **at-least-once** and every consumer must be 
 | `outbox_message_actor_type_valid` | CHECK | `actor_type IN ('user','service','system','anonymous','unknown')` | Guards the value set |
 | `outbox_message_actor_valid` | CHECK | `(actor_type = 'user') = (actor_user_id IS NOT NULL) AND (actor_type = 'service') = (actor_service IS NOT NULL)` | A user always has an id, a service a name, nobody else either |
 | `outbox_message_actor_user_id_not_empty` | CHECK | `actor_user_id <> '00000000-…'` | The all-zero UUID is never a user |
+| `outbox_message_attempts_valid` | CHECK | `attempts >= 0` | No negative count |
 
 **Indexes**
 
 | Name | Columns | Type | Purpose |
 | ---- | ------- | ---- | ------- |
-| *(PK)* | `(id)` | btree | Dispatcher drains undelivered rows in id (time) order — no extra index needed |
+| *(PK)* | `(id)` | btree | Dispatcher drains due rows in id (occurrence) order — no extra index needed; the table holds only the backlog |
 
 **Notes**
 
@@ -204,10 +206,20 @@ redelivers the row, so delivery is **at-least-once** and every consumer must be 
 - **Delivered rows are deleted**, so the table stays small (only the backlog). On a crash before the
   delete commits, the rows survive and are redelivered, so delivery is at-least-once and consumers must
   be idempotent (keyed on `id`).
+- **A failing row does not hold up the rest.** When a batch fails, the dispatcher delivers its rows one by one: the
+  rows that go through are deleted, and each failing one records `attempts`, `last_error` and `next_attempt_at`. After
+  10 attempts the row stays for an operator and logs `outbox.message.gave_up`. A later row may therefore be delivered
+  before an earlier one that failed.
+- **Only what EF Core tracks is captured.** A row deleted by `ON DELETE CASCADE`, or written with raw SQL,
+  `ExecuteUpdate` or `ExecuteDelete`, produces no change; a feature doing that publishes a domain event in the same
+  transaction when a consumer depends on it (e.g. `files_released`).
+- **Today one module produces.** `recruitment.outbox_message` carries the changes of `application_document`, for the
+  Files module. Marking another entity `ITrackedEntity` captures it too.
 - **Attribution is captured at write time**, because the dispatcher runs later on a background thread with
   no request to read. The interceptor stamps the current actor (a worker's scope, else the request's user,
   else `anonymous`; `unknown` with neither), the trace id, and the ambient feature event onto every row of
-  the save — including events staged in it. A missing actor is `unknown`, never a sentinel id.
+  the save — including events staged in it. A missing actor is `unknown`, never a sentinel id. The actor is
+  `user` for a staff token, `anonymous` for a request without one (an applicant), and `system` outside any request.
 - **`kind` — events on the same outbox.** The change-capture interceptor can only express *row*
   mutations, but some facts a module needs to broadcast are not a single row change — e.g. "a job offer's
   application deadline has passed" (a condition only the owning module can evaluate). Rather than adding
