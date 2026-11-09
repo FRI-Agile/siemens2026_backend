@@ -66,11 +66,10 @@ export interface JobPost extends JobPostForm {
   version: number
 }
 
-/** One entry of `GET /api/v1/recruitment/staff-users`. */
-export interface StaffUser {
+/** One entry of `GET /api/v1/recruitment/recruiters`. */
+export interface Recruiter {
   id: string
   displayName: string
-  roles: string[]
 }
 
 /** The staff with the Recruiter role, the people a job post's recruiter is chosen from. */
@@ -85,24 +84,24 @@ export function useRecruiters(currentStaff?: CurrentStaff) {
   return useQuery({
     queryKey: [
       'recruitment',
-      'staff-users',
-      isRecruiter ? currentStaff?.id : 'Recruiter',
+      'recruiters',
+      isRecruiter ? currentStaff?.id : 'all',
     ],
     enabled: !!currentStaff,
-    queryFn: async () => {
+    queryFn: async (): Promise<Recruiter[]> => {
+      // A recruiter may not list the others; the only recruiter they can name is themselves.
       if (isRecruiter && currentStaff) {
         return [
           {
             id: currentStaff.id,
             displayName:
               currentStaff.name ?? currentStaff.username ?? currentStaff.id,
-            roles: ['Recruiter'],
           },
         ]
       }
 
-      const { users } = await request<{ users: StaffUser[] }>(
-        '/api/v1/recruitment/staff-users?role=Recruiter',
+      const { users } = await request<{ users: Recruiter[] }>(
+        '/api/v1/recruitment/recruiters',
         { headers: { Authorization: `Bearer ${await getAccessToken(auth)}` } },
       )
       return users

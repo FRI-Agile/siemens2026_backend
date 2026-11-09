@@ -108,7 +108,7 @@ change both together.
 **Notes**
 
 - **Who writes what.** Only a hiring manager (or an administrator) creates a job post (`POST /job-posts`), and names
-  its recruiter in the same request, choosing from `GET /staff-users?role=Recruiter`. Any hiring manager can then
+  its recruiter in the same request, choosing from `GET /recruiters`. Any hiring manager can then
   edit it (`PUT /job-posts/{id}`), close it (`POST …/close`) or reopen it (`POST …/reopen`), so the table keeps
   `updated_by`. Each of them carries the `version` the caller read ([optimistic locking](../conventions.md#optimistic-locking-version)).
 - **Status moves `draft → published ⇄ closed`.** A post is created as a draft or published; editing can publish a
