@@ -120,20 +120,3 @@ public static class ApplicationDocumentTypes
     /// <summary>Anything else: certificates, references, a portfolio.</summary>
     public const string Other = "iné";
 }
-
-/// <summary>Where a submitted file is in its upload (<c>application_document.status</c>, ADR-A010).</summary>
-/// <remarks>
-/// <c>nahrávanie → kontrola → overený</c>. An infected file is deleted with its row, and so is an upload not confirmed
-/// within an hour. The values are the Slovak terms as written (ADR-D009).
-/// </remarks>
-public static class ApplicationDocumentStatuses
-{
-    /// <summary>The upload URL is issued; the candidate has not confirmed the upload yet (<i>nahrávanie</i>).</summary>
-    public const string Uploading = "nahrávanie";
-
-    /// <summary>Confirmed and checked for size and type; waiting for ClamAV (<i>antivírusová kontrola</i>). Hidden from staff.</summary>
-    public const string Scanning = "kontrola";
-
-    /// <summary>ClamAV found it clean (<i>overený</i>); staff may download it.</summary>
-    public const string Clean = "overený";
-}
