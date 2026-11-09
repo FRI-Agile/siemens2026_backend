@@ -200,20 +200,21 @@ change both together.
 | `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID |
 | `job_post_id` | `UUID` | FK, UQ | NO |  | The post applied to |
 | `candidate_id` | `UUID` | FK, UQ | NO |  | Who applied |
-| `status` | `TEXT` |  | NO | `'new'` | Where the application is in the pipeline — see CHECK |
+| `status` | `TEXT` |  | NO | `'nová žiadosť'` | Where the application is in the pipeline — see CHECK |
 
 **Value sets**
 
 | Column | Value | Meaning |
 | ------ | ----- | ------- |
-| `status` | `new` | Submitted, not yet looked at (*nová žiadosť*) |
-| `status` | `screening` | Shortlisted (*predvýber*) |
-| `status` | `interview` | Invited to an interview (*pohovor*) |
-| `status` | `offer` | Made an offer (*ponuka*) |
-| `status` | `hired` | Accepted the offer and was hired (*prijatý*) |
-| `status` | `rejected` | Turned down (*odmietnutý*) |
+| `status` | `nová žiadosť` | Submitted, not yet looked at |
+| `status` | `predvýber` | Shortlisted |
+| `status` | `pohovor` | Invited to an interview |
+| `status` | `ponuka` | Made an offer |
+| `status` | `prijatý` | Accepted the offer and was hired |
+| `status` | `odmietnutý` | Turned down |
 
-The application's copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both together.
+The codes are the Slovak terms as written, diacritics included ([ADR-D009](../decision-log.md#adr-d009--new-value-sets-use-slovak-codes)). The application's
+copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both together.
 
 **Foreign keys**
 
@@ -226,7 +227,7 @@ The application's copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; c
 
 | Name | Type | Definition | Purpose |
 | ---- | ---- | ---------- | ------- |
-| `application_status_valid` | CHECK | `status IN ('new','screening','interview','offer','hired','rejected')` | Guards the value set |
+| `application_status_valid` | CHECK | `status IN ('nová žiadosť','predvýber','pohovor','ponuka','prijatý','odmietnutý')` | Guards the value set |
 
 **Indexes**
 
@@ -246,7 +247,8 @@ The application's copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; c
 
 - **Only published posts take applications.** The submitting command checks `job_post.status = 'published'`; a CHECK
   cannot look at another row. Closing a post later leaves its applications as they are.
-- **Status moves `new → screening → interview → offer → hired`, and `rejected` from any step before `hired`.** Staff
+- **Status moves `nová žiadosť → predvýber → pohovor → ponuka → prijatý`, and `odmietnutý` from any step before
+  `prijatý`.** Staff
   move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
   application enforces the moves; the table only guards the value set.
 - **The job post detail lists its applications.** It reads `application` by `job_post_id` joined to `candidate` for
@@ -269,21 +271,22 @@ The application's copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; c
 | `file_name` | `TEXT` |  | NO |  | The name it was uploaded under; shown to staff and given to downloads, never used as the blob's name |
 | `content_type` | `TEXT` |  | NO |  | The MIME type, checked against the blob on confirmation |
 | `size_bytes` | `BIGINT` |  | NO |  | The size, checked against the blob on confirmation |
-| `status` | `TEXT` |  | NO | `'uploading'` | Where the upload stands — see CHECK |
+| `status` | `TEXT` |  | NO | `'nahrávanie'` | Where the upload stands — see CHECK |
 
 **Value sets**
 
 | Column | Value | Meaning |
 | ------ | ----- | ------- |
-| `type` | `cv` | Curriculum vitae (*životopis*) |
-| `type` | `cover_letter` | Cover letter (*motivačný list*) |
-| `type` | `other` | Anything else: certificates, references, a portfolio |
-| `status` | `uploading` | The upload URL is issued; not confirmed yet |
-| `status` | `scanning` | Confirmed, size and type match; waiting for ClamAV. Hidden from staff |
-| `status` | `clean` | ClamAV found it clean; staff may download it |
+| `type` | `životopis` | Curriculum vitae |
+| `type` | `motivačný list` | Cover letter |
+| `type` | `iné` | Anything else: certificates, references, a portfolio |
+| `status` | `nahrávanie` | The upload URL is issued; not confirmed yet |
+| `status` | `kontrola` | Confirmed, size and type match; waiting for ClamAV (*antivírusová kontrola*). Hidden from staff |
+| `status` | `overený` | ClamAV found it clean; staff may download it |
 
-The application's copies are `ApplicationDocumentTypes` and `ApplicationDocumentStatuses` in
-`RecruitmentVocabulary.cs`; change both together.
+The codes are the Slovak terms as written, diacritics included ([ADR-D009](../decision-log.md#adr-d009--new-value-sets-use-slovak-codes)). The application's
+copies are `ApplicationDocumentTypes` and `ApplicationDocumentStatuses` in `RecruitmentVocabulary.cs`; change both
+together.
 
 **Foreign keys**
 
@@ -295,11 +298,11 @@ The application's copies are `ApplicationDocumentTypes` and `ApplicationDocument
 
 | Name | Type | Definition | Purpose |
 | ---- | ---- | ---------- | ------- |
-| `application_document_type_valid` | CHECK | `type IN ('cv','cover_letter','other')` | Guards the value set |
+| `application_document_type_valid` | CHECK | `type IN ('životopis','motivačný list','iné')` | Guards the value set |
 | `application_document_file_name_valid` | CHECK | `btrim(file_name) <> ''` | No blank file name |
 | `application_document_content_type_valid` | CHECK | `btrim(content_type) <> ''` | No blank content type |
 | `application_document_size_bytes_valid` | CHECK | `size_bytes > 0` | No empty files |
-| `application_document_status_valid` | CHECK | `status IN ('uploading','scanning','clean')` | Guards the value set |
+| `application_document_status_valid` | CHECK | `status IN ('nahrávanie','kontrola','overený')` | Guards the value set |
 
 **Indexes**
 
@@ -307,7 +310,7 @@ The application's copies are `ApplicationDocumentTypes` and `ApplicationDocument
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id, e.g. for a download URL |
 | `idx_application_document_application_id` | `(application_id)` | btree | An application's documents; the cascade from `application` |
-| `idx_application_document_created_at` | `(created_at) WHERE status = 'uploading'` | partial | The pruner's unconfirmed uploads, oldest first; holds only that short-lived backlog |
+| `idx_application_document_created_at` | `(created_at) WHERE status = 'nahrávanie'` | partial | The pruner's unconfirmed uploads, oldest first; holds only that short-lived backlog |
 
 **Triggers**
 
@@ -317,9 +320,9 @@ The application's copies are `ApplicationDocumentTypes` and `ApplicationDocument
 
 **Notes**
 
-- **The upload lifecycle is ADR-A010's.** Issuing an upload URL inserts the row as `uploading`; the candidate's
-  confirmation checks the blob's real size and type and moves it to `scanning`; ClamAV's verdict moves it to `clean`.
-  An infected file, and an upload left `uploading` for an hour, are deleted with their row. `version` keeps the
+- **The upload lifecycle is ADR-A010's.** Issuing an upload URL inserts the row as `nahrávanie`; the candidate's
+  confirmation checks the blob's real size and type and moves it to `kontrola`; ClamAV's verdict moves it to
+  `overený`. An infected file, and an upload left `nahrávanie` for an hour, are deleted with their row. `version` keeps the
   pruner and a late confirmation from both winning.
-- **Staff see `clean` files only**, so every staff read filters on it. Lengths and the allowed content types and sizes
+- **Staff see `overený` files only**, so every staff read filters on it. Lengths and the allowed content types and sizes
   are the application's rules, checked before the upload URL is issued.

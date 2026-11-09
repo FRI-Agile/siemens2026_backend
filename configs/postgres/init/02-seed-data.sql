@@ -154,14 +154,14 @@ VALUES
 INSERT INTO recruitment.application (job_post_id, candidate_id, status, created_at)
 SELECT p.id, c.id, a.status, a.created_at
 FROM (VALUES
-        ('Elektrotechnik údržby',   'kasuba7@stud.uniza.sk',        'new',       now() - interval '20 hours'),
-        ('Elektrotechnik údržby',   'zuzana.stefanikova@gmail.com', 'screening', now() - interval '19 hours'),
-        ('Elektrotechnik údržby',   'peter.hudak@azet.sk',          'interview', now() - interval '18 hours'),
-        ('Elektrotechnik údržby',   'lucia.durisova@centrum.sk',    'offer',     now() - interval '17 hours'),
-        ('Elektrotechnik údržby',   'tomas.gresak@post.sk',         'hired',     now() - interval '16 hours'),
-        ('Elektrotechnik údržby',   'k.polakova@gmail.com',         'rejected',  now() - interval '15 hours'),
-        ('Vývojár softvéru (.NET)', 'kasuba7@stud.uniza.sk',        'screening', now() - interval '13 hours'),
-        ('Vývojár softvéru (.NET)', 'jan.miklos@outlook.com',       'new',       now() - interval '14 hours')
+        ('Elektrotechnik údržby',   'kasuba7@stud.uniza.sk',        'nová žiadosť', now() - interval '20 hours'),
+        ('Elektrotechnik údržby',   'zuzana.stefanikova@gmail.com', 'predvýber',    now() - interval '19 hours'),
+        ('Elektrotechnik údržby',   'peter.hudak@azet.sk',          'pohovor',      now() - interval '18 hours'),
+        ('Elektrotechnik údržby',   'lucia.durisova@centrum.sk',    'ponuka',       now() - interval '17 hours'),
+        ('Elektrotechnik údržby',   'tomas.gresak@post.sk',         'prijatý',      now() - interval '16 hours'),
+        ('Elektrotechnik údržby',   'k.polakova@gmail.com',         'odmietnutý',   now() - interval '15 hours'),
+        ('Vývojár softvéru (.NET)', 'kasuba7@stud.uniza.sk',        'predvýber',    now() - interval '13 hours'),
+        ('Vývojár softvéru (.NET)', 'jan.miklos@outlook.com',       'nová žiadosť', now() - interval '14 hours')
      ) AS a (title, email, status, created_at)
 JOIN recruitment.job_post p ON p.title = a.title
 JOIN recruitment.candidate c ON lower(c.email) = a.email;

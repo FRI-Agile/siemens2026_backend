@@ -191,8 +191,9 @@ CREATE TRIGGER trg_candidate_set_audit
 
 -- application  (a candidate's application to one job post; žiadosť)
 -- Submitted by the anonymous candidate to a published post (checked by the application), so no `created_by`
--- (ADR-D008). Staff then move it through the hiring pipeline: `new -> screening -> interview -> offer -> hired`, and
--- `rejected` from any step before `hired`. A candidate applies to a post once.
+-- (ADR-D008). Staff then move it through the hiring pipeline:
+-- `nová žiadosť -> predvýber -> pohovor -> ponuka -> prijatý`, and `odmietnutý` from any step before `prijatý`. The
+-- codes are the Slovak terms as written (ADR-D009). A candidate applies to a post once.
 --
 -- The job post must not disappear under its applications, so RESTRICT; posts are closed, never deleted. An
 -- application means nothing without its candidate, so erasing a candidate erases their applications.
@@ -200,7 +201,7 @@ CREATE TABLE recruitment.application (
     id            UUID         PRIMARY KEY DEFAULT uuidv7(),
     job_post_id   UUID         NOT NULL,
     candidate_id  UUID         NOT NULL,
-    status        TEXT         NOT NULL DEFAULT 'new',  -- new / screening / interview / offer / hired / rejected
+    status        TEXT         NOT NULL DEFAULT 'nová žiadosť',  -- nová žiadosť / predvýber / pohovor / ponuka / prijatý / odmietnutý
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ,
     updated_by    UUID,
@@ -210,7 +211,7 @@ CREATE TABLE recruitment.application (
     CONSTRAINT application_candidate_fk
         FOREIGN KEY (candidate_id) REFERENCES recruitment.candidate (id) ON DELETE CASCADE,
     CONSTRAINT application_status_valid CHECK (status IN (
-        'new', 'screening', 'interview', 'offer', 'hired', 'rejected'))
+        'nová žiadosť', 'predvýber', 'pohovor', 'ponuka', 'prijatý', 'odmietnutý'))
 );
 -- One application per candidate and post. Leading with the post, it is also the job post detail's lookup of the
 -- post's applications.
@@ -224,36 +225,37 @@ CREATE TRIGGER trg_application_set_audit
 
 -- application_document  (a file the candidate submitted with an application: CV, cover letter, …)
 -- The file's metadata; the blob is in the module's container, named by `id` rather than by the user's file name
--- (ADR-A010). `status` follows the upload: `uploading` once the upload URL is issued, `scanning` once the candidate
--- confirms it and its size and type check out, `clean` once ClamAV reports so. Staff see `clean` documents only. An
--- infected file is deleted with its row, and so is an upload not confirmed within an hour.
+-- (ADR-A010). `status` follows the upload: `nahrávanie` once the upload URL is issued, `kontrola` once the
+-- candidate confirms it and its size and type check out, `overený` once ClamAV finds it clean. Staff see `overený`
+-- documents only. An infected file is deleted with its row, and so is an upload not confirmed within an hour. The
+-- codes are the Slovak terms as written (ADR-D009).
 --
 -- Written by the anonymous candidate and then only by the system, so neither `created_by` nor `updated_by`
 -- (ADR-D008); `version` still guards the status moves against a pruner and a confirmation racing.
 CREATE TABLE recruitment.application_document (
     id              UUID         PRIMARY KEY DEFAULT uuidv7(),  -- also the blob's name
     application_id  UUID         NOT NULL,
-    type            TEXT         NOT NULL,  -- cv / cover_letter / other
+    type            TEXT         NOT NULL,  -- životopis / motivačný list / iné
     file_name       TEXT         NOT NULL,  -- as uploaded, shown to staff and used for downloads
     content_type    TEXT         NOT NULL,
     size_bytes      BIGINT       NOT NULL,
-    status          TEXT         NOT NULL DEFAULT 'uploading',  -- uploading / scanning / clean
+    status          TEXT         NOT NULL DEFAULT 'nahrávanie',  -- nahrávanie / kontrola / overený
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ,
     version         SMALLINT     NOT NULL DEFAULT 1,
     CONSTRAINT application_document_application_fk
         FOREIGN KEY (application_id) REFERENCES recruitment.application (id) ON DELETE CASCADE,
-    CONSTRAINT application_document_type_valid CHECK (type IN ('cv', 'cover_letter', 'other')),
+    CONSTRAINT application_document_type_valid CHECK (type IN ('životopis', 'motivačný list', 'iné')),
     CONSTRAINT application_document_file_name_valid CHECK (btrim(file_name) <> ''),
     CONSTRAINT application_document_content_type_valid CHECK (btrim(content_type) <> ''),
     CONSTRAINT application_document_size_bytes_valid CHECK (size_bytes > 0),
-    CONSTRAINT application_document_status_valid CHECK (status IN ('uploading', 'scanning', 'clean'))
+    CONSTRAINT application_document_status_valid CHECK (status IN ('nahrávanie', 'kontrola', 'overený'))
 );
 -- An application's documents, and the FK's index for the cascade from application.
 CREATE INDEX idx_application_document_application_id ON recruitment.application_document (application_id);
 -- The pruner's candidates: uploads never confirmed, oldest first. Partial, so it holds only the short-lived backlog.
 CREATE INDEX idx_application_document_created_at
-    ON recruitment.application_document (created_at) WHERE status = 'uploading';
+    ON recruitment.application_document (created_at) WHERE status = 'nahrávanie';
 CREATE TRIGGER trg_application_document_set_audit
     BEFORE UPDATE ON recruitment.application_document
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();

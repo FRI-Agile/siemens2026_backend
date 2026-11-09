@@ -150,3 +150,24 @@ Applicants have no account ([ADD §2](../architecture/ADD.md#2-purpose)), so the
   later application with a known e-mail is linked to the existing candidate without changing it, since nothing proves
   the applicant owns the address.
 
+---
+
+## ADR-D009 — New value sets use Slovak codes
+
+**Date:** 2026-11-09 · **Status:** accepted
+
+The application is Slovak-only, and staff read the codes directly — in the database, in logs, in API responses. An
+English code (`screening`) is one more name to translate back to the term the business uses (*predvýber*). From
+schema 0.4.0 on, a `CHECK`-guarded value set stores the Slovak term itself, as written: `nová žiadosť`,
+`motivačný list`.
+
+- Diacritics and spaces are kept. The database is UTF-8 and `TEXT` stores them like any other character, so the code
+  is the word the UI shows and needs no lookup; the UI only capitalises its first letter (*Nová žiadosť*).
+- Codes are lowercase and in Unicode NFC, the form C# string literals and browsers produce. A comparison is by exact
+  code points, so a client that sent the decomposed form (NFD) would fail the API's validation and the `CHECK`;
+  clients send the codes the API returns, never retyped ones. In a URL a code is percent-encoded like any other text.
+- C# identifiers stay English (`ApplicationStatuses.Screening = "predvýber"`), like the rest of the code; only the
+  stored value is Slovak.
+- `job_post`'s value sets (`status`, `payment_type`, `employment_type`) predate this decision and keep their English
+  codes. Moving them means a data migration in Azure and a matching API and frontend change, so it is a change of its
+  own.

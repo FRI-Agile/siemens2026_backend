@@ -95,6 +95,10 @@ full audit block and the update trigger.
 | No extra attributes per value | Values need attributes (name, regex, ordering, flags) |
 | e.g. `status`, `action`, `employment_type`, `work_mode` | e.g. `country`, `language`, `currency`, `skill` |
 
+A `CHECK` value set's codes are the Slovak terms as written, lowercase, diacritics and spaces included (`nová žiadosť`,
+`motivačný list`); [ADR-D009](decision-log.md#adr-d009--new-value-sets-use-slovak-codes). `job_post`'s older value sets
+keep their English codes.
+
 ## Cross-service / cross-module references (soft references)
 
 A column that points at a row **owned by another module/service** (e.g. a `job_offer_id` stored
