@@ -1,13 +1,18 @@
+using Kernel.Outbox;
+
 namespace RecruitmentModule.Domain.Entity;
 
 /// <summary>
-/// A file submitted with an application (<c>recruitment.application_document</c>): its metadata, the blob being named
-/// by <see cref="Id"/> in the module's container (ADR-A010).
+/// A file submitted with an application (<c>recruitment.application_document</c>): what it is, and which file it is. The
+/// file itself — name, type, size, bytes, scan — is the Files module's, referenced by <see cref="FileId"/>.
 /// </summary>
-/// <remarks>Written by the anonymous candidate and then by the system only, so no <c>created_by</c> or <c>updated_by</c> (ADR-D008).</remarks>
-public sealed class ApplicationDocument
+/// <remarks>
+/// Tracked, so its changes reach the outbox and the Files module confirms the file when a row gains it and releases it
+/// when the row goes (docs/api/files/files.md §9). Written by the anonymous candidate and then by the system only, so no
+/// <c>created_by</c> or <c>updated_by</c> (ADR-D008).
+/// </remarks>
+public sealed class ApplicationDocument : ITrackedEntity
 {
-    /// <summary>Also the blob's name.</summary>
     public Guid Id { get; set; }
 
     public Guid ApplicationId { get; set; }
@@ -15,15 +20,8 @@ public sealed class ApplicationDocument
     /// <summary>One of <see cref="ApplicationDocumentTypes"/>.</summary>
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>The name the file was uploaded under; shown to staff and used for downloads, never as the blob's name.</summary>
-    public string FileName { get; set; } = string.Empty;
-
-    public string ContentType { get; set; } = string.Empty;
-
-    public long SizeBytes { get; set; }
-
-    /// <summary>One of <see cref="ApplicationDocumentStatuses"/>; staff see an <c>overený</c> (scanned clean) document only.</summary>
-    public string Status { get; set; } = ApplicationDocumentStatuses.Uploading;
+    /// <summary>The <c>files.file</c> the document is; a logical reference, unique, with no foreign key.</summary>
+    public Guid FileId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 

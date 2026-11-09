@@ -18,10 +18,7 @@ internal sealed class ApplicationDocumentConfiguration : IEntityTypeConfiguratio
         b.Property(d => d.Id).HasColumnName("id").ValueGeneratedNever();
         b.Property(d => d.ApplicationId).HasColumnName("application_id");
         b.Property(d => d.Type).HasColumnName("type");
-        b.Property(d => d.FileName).HasColumnName("file_name");
-        b.Property(d => d.ContentType).HasColumnName("content_type");
-        b.Property(d => d.SizeBytes).HasColumnName("size_bytes");
-        b.Property(d => d.Status).HasColumnName("status");
+        b.Property(d => d.FileId).HasColumnName("file_id");
 
         // The column default and the audit trigger own these; no created_by or updated_by (ADR-D008).
         b.Property(d => d.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
