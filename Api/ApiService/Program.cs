@@ -9,10 +9,13 @@ using ApiService.Infrastructure.ExceptionHandlers;
 using ApiService.OpenAPI;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using FilesModule;
+using FilesModule.Infrastructure.FileStorage;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Errors;
 using Kernel.Idempotency;
+using Kernel.Outbox;
 using Kernel.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -47,8 +50,11 @@ builder.Services.AddHybridCache();
 // and from configuration in production. Both integrations add a health check that /health reports.
 // The Azure variant signs in to PostgreSQL with the VM's managed identity when the connection string has no
 // password (ADR-006, iam.md §4.2); locally the AppHost's connection string carries one, so nothing changes there.
+// Blob Storage is Azurite locally and the storage account in production, signed in with the VM's managed identity;
+// the Files module keeps its uploads there (docs/api/files/files.md §12).
 builder.AddAzureNpgsqlDataSource("healthyhires");
 builder.AddAzureBlobServiceClient("blobs");
+builder.Services.AddAzureBlobFileStorage(builder.Environment);
 
 // ADR-A007: the client IP for anonymous applicants comes from X-Forwarded-For, which only Caddy may set. The
 // defaults trust loopback alone as a proxy, and Caddy is the only loopback peer: it shares the pod's network
@@ -123,7 +129,12 @@ builder.Services.AddRateLimiter(options =>
 // ADR-A008: native request validation
 builder.Services.AddValidation();
 
+// The transactional outbox (conventions.md § Outbox pattern): the change-capture interceptor producing modules attach
+// to their contexts, and the dispatcher that delivers their changes and events to other modules' handlers.
+builder.Services.AddOutbox();
+
 // ── Modules (ADR-A001) ───────────────────────────────────
+builder.Services.AddFilesModule(builder.Configuration);
 builder.Services.AddRecruitmentModule();
 // ─────────────────────────────────────────────────────────
 
@@ -285,6 +296,7 @@ RouteGroupBuilder api = app.MapGroup("/api/v{version:apiVersion}")
 
 api.MapGet("/hello", () => "Hello, HealthyHires!");
 api.MapMe();
+api.MapFilesModule();
 api.MapRecruitmentModule();
 // ─────────────────────────────────────────────────────────
 
