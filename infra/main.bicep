@@ -49,8 +49,8 @@ param imagePlan object = {}
 param postgresVersion string = '18'
 param postgresSku string = 'Standard_B1ms'
 
-@description('Blob containers to create, one per module (ADR-A010).')
-param blobContainers array = []
+@description('Blob containers to create. The Files module keeps every upload in one, `files` (docs/api/files/files.md §12.1).')
+param blobContainers array = ['files']
 
 @description('CanNotDelete locks on PostgreSQL, Storage and Key Vault. Off for rehearsal groups, which are deleted.')
 param enableDeleteLocks bool = true

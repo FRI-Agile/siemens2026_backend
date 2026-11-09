@@ -1,0 +1,39 @@
+@startuml file-lifecycle
+' The lifecycle of a files.file row (docs/api/files/files.md §2). The state follows from etag, scanned_at and deleted_at;
+' the row has no status column. Edge labels are kept short: the Smetana layout clips long ones at the canvas edge.
+skinparam defaultFontName "Helvetica"
+skinparam shadowing false
+skinparam ArrowColor #555555
+skinparam state {
+    BackgroundColor #FFFFFF
+    BorderColor #1E3A5F
+    FontColor #1E3A5F
+    AttributeFontColor #555555
+    AttributeFontSize 11
+}
+
+title Lifecycle of a file
+
+state Pending : etag IS NULL\nreaped after a day\nif never confirmed
+state Confirmed : etag set\nscanned_at IS NULL
+state Clean #E8F5E9 : etag and scanned_at set\n**downloadable by staff**
+state Released #FFF3E0 : deleted_at set\nkept 7 days
+state Reaped #EEEEEE : object and row deleted\nby FileJanitor
+state Purged #EEEEEE : object and row deleted\nby FileJanitor
+
+[*] --> Pending : POST /files/uploads
+
+Pending --> Confirmed : reference committed,\nobject checks out
+Pending --> Reaped : after a day,\nunconfirmed
+
+Confirmed --> Clean : ClamAV: clean
+Confirmed --> Released : ClamAV: infected\n(object deleted)
+
+Clean --> Released : reference\nremoved
+
+Released --> Purged : after 7 days
+
+Reaped --> [*]
+Purged --> [*]
+
+@enduml

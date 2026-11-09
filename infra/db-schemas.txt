@@ -6,4 +6,5 @@
 #
 # One name per line, lowercase letters, digits and underscores.
 kernel
+files
 recruitment

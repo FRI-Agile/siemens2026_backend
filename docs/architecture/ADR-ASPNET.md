@@ -267,23 +267,23 @@ Context:
 
 - Modules need to store user-uploaded files. The platform uses Azure Blob Storage, with Azurite for local development ([ADR-005](ADR.md#adr-005-object-storage--azure-blob-storage)).
 
-Decision:
+Decision (amended 9. 11. 2026: one Files module instead of a container per module):
 
-- Access Blob Storage through `Azure.Storage.Blobs`, registered once via `Microsoft.Extensions.Azure` with `DefaultAzureCredential` (managed identity in production, Azurite connection string locally).
-- Each module uses its own blob container, behind its own storage abstraction.
-- Browsers upload and download files directly to and from Blob Storage using short-lived user delegation SAS URLs, issued by the API only after it has authorized the request (signed via managed identity, no account keys).
+- Access Blob Storage through `Azure.Storage.Blobs`, registered once via the Aspire client integration (managed identity in production, Azurite connection string locally).
+- One Files module owns every upload: the metadata in `files.file`, the blobs in one `files` container, and their lifecycle. Other modules reference a file by id and declare its kind as an `IFilePurpose` ([files.md](../api/files/files.md)).
+- Browsers upload and download files directly to and from Blob Storage using short-lived user delegation SAS URLs, issued by the API (signed via managed identity, no account keys).
 
 Consequences:
 
-- Container-per-module mirrors schema-per-module ([ADR-A001](#adr-a001-application-architecture--modular-monolith)); modules never access another module's container.
-- File metadata (name, owner, content type) lives in the module's database schema; blobs are stored under generated IDs, not user file names.
-- Upload: the client requests an upload URL with the file's size and content type; the API checks permissions and validates both against module rules, then returns a write-only SAS URL for one new blob.
-- A SAS URL cannot enforce file size, so after upload the client confirms it and the API checks the blob's actual size and type; files that don't match are deleted and never become visible.
-- Each issued upload URL is recorded as a pending upload in the module's schema; a background job deletes pending uploads that were never confirmed within an hour.
-- For anonymous applicants ([ADD §2](ADD.md#2-purpose)), authorizing an upload means: the job offer is open, the ALTCHA solution is valid ([ADR-022](ADR.md#adr-022-bot-protection--altcha-on-the-application-form)) and the per-IP rate limit allows it ([ADR-A007](#adr-a007-rate-limiting--aspnet-core-rate-limiting)).
-- After an upload is confirmed, the API streams the blob to the ClamAV container ([ADR-005](ADR.md#adr-005-object-storage--azure-blob-storage)); files stay hidden from staff until ClamAV reports them clean, and infected files are deleted. The same ClamAV container runs in the local stack.
-- Download: the API checks permissions and returns a read-only SAS URL for that one blob, valid for a few minutes.
-- File transfers don't load the VM, but the storage account must be reachable from browsers, with CORS allowing the app origin.
+- Modules never touch blobs; they confirm and release their files through `IFileReferences` (Kernel). This replaces the original container-per-module plan, which would have repeated the upload, scan and cleanup logic in every module.
+- Blobs are stored under generated names (`uploads/{id}.ext`), not user file names.
+- Upload: the client sends the file's purpose, name, size and content type; the API checks them against the purpose and returns a create-only SAS URL for one new blob, recording the file as pending.
+- A SAS URL cannot enforce size or content type, so there is no client confirm call: the module whose record references the file validates it before saving, and the Files module confirms it from that module's transactional outbox once the save commits, checking the blob's real size and type. A file that fails, or is never referenced, stays pending and a background job deletes it after a day.
+- For anonymous applicants ([ADD §2](ADD.md#2-purpose)), the upload URL endpoint is open and bounded by the per-IP rate limit ([ADR-A007](#adr-a007-rate-limiting--aspnet-core-rate-limiting)); the ALTCHA solution ([ADR-022](ADR.md#adr-022-bot-protection--altcha-on-the-application-form)) is to be checked there too once implemented.
+- After a file is confirmed, a background job streams the blob to the ClamAV container ([ADR-005](ADR.md#adr-005-object-storage--azure-blob-storage)); files stay hidden from staff until ClamAV reports them clean, and infected files are deleted. The same ClamAV container runs in the local stack.
+- Download: any signed-in staff member gets a read-only SAS URL for a clean file, valid for a few minutes.
+- A file whose reference is removed is soft-deleted at once and purged after 7 days.
+- File transfers don't load the VM, but the storage account must be reachable from browsers, with CORS allowing the app origin; locally the API sets Azurite's CORS at startup.
 - Integration tests run against Azurite via Testcontainers.
 
 Dates & Owner:

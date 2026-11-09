@@ -6,7 +6,7 @@ A job is written as a plain **worker**; the host owns the loop, the timing, the 
 failure logging.
 
 | Host | Runs | Use for |
-| --- | --- | --- |
+| ---- | ---- | ------- |
 | `DailyWorkerService<TWorker>` | Once a day at a fixed UTC time | Work anchored to the clock: retention passes, nightly summaries |
 | `PeriodicWorkerService<TWorker>` | At startup, then every interval | Work that reconciles continuously: a janitor, a reaper, a poller |
 
@@ -66,8 +66,10 @@ Choosing the time at the call site keeps the stagger between jobs in one place. 
 give heavy ones their own slot. Current schedule:
 
 | Worker | Host | When | What it does |
-| --- | --- | --- | --- |
+| ------ | ---- | ---- | ------------ |
 | `IdempotencyPruner` | Daily | 03:00 UTC | Deletes expired `kernel.idempotency` records ([idempotency.md](../idempotency/idempotency.md#storage)) |
+| `FileScanner` | Periodic | every 30 s | Sends confirmed uploads to ClamAV; clean ones become downloadable, infected ones are deleted ([files.md §10](../files/files.md#10-malware-scan-and-the-janitor)) |
+| `FileJanitor` | Periodic | hourly | Reaps abandoned uploads and purges released files after 7 days ([files.md §10](../files/files.md#10-malware-scan-and-the-janitor)) |
 
 Add a row here when you register a worker.
 
@@ -91,7 +93,7 @@ it runs at startup, every deployment triggers a pass.
 stops the host or the API.
 
 | Event id | Event name | Level | Meaning |
-| --- | --- | --- | --- |
+| -------- | ---------- | ----- | ------- |
 | `1100` | `scheduling.daily_worker.failed` | Error | A daily run threw; carries `Worker` and the exception. Retried tomorrow. |
 | `1101` | `scheduling.periodic_worker.failed` | Error | A periodic run threw; carries `Worker` and the exception. Retried next interval. |
 

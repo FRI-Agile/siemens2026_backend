@@ -1,6 +1,6 @@
 # First Module Tests
 
-Three tests check every endpoint the modules map. With no module yet they would pass by checking nothing, so they are added with the first module, ported from PocketDesk. Each place that refers to one is marked `TODO(first-module)`:
+Three tests check every endpoint the modules map. With no module yet they would pass by checking nothing, so they are added with the first module. Each place that refers to one is marked `TODO(first-module)`:
 
 ```bash
 grep -rn "TODO(first-module)" Api docs --exclude-dir=artifacts

@@ -30,6 +30,7 @@ New to the project? [Getting Started](getting-started.md) takes you from a fresh
 - [Implementation Guide](api/implementation-guide.md) — the modular monolith, how a module is laid out, how to create a module and a feature, validation, the decorator chain and the backend conventions.
 - [Error Model](api/errors/errors.md) — problem responses, the exception taxonomy, the Slovak error messages, validation errors and how error responses reach the OpenAPI document.
 - [Idempotency](api/idempotency/idempotency.md) — the `Idempotency-Key` contract, defaults, per-endpoint overrides, claim lifecycle and limitations.
+- [Files](api/files/files.md) — direct-to-storage uploads and downloads on presigned URLs, the file lifecycle, the ClamAV scan, cleanup, and how to give an entity a file.
 - [Scheduling](api/scheduling/scheduling.md) — daily and periodic background workers: writing, registering, behaviour and the current schedule.
 
 ## Testing
@@ -48,13 +49,14 @@ New to the project? [Getting Started](getting-started.md) takes you from a fresh
 
 ## Diagrams
 
-PlantUML sources and rendered SVGs live in [diagrams/architecture](diagrams/architecture); re-render them with `scripts/render-diagrams.sh`.
+PlantUML sources and rendered SVGs live in [diagrams/architecture](diagrams/architecture) and [diagrams/api](diagrams/api); re-render them with `scripts/render-diagrams.sh`.
 
 - [C1 System Context](diagrams/architecture/C1_System_Context.svg)
 - [C1 Supply Chain](diagrams/architecture/C1_Supply_Chain.svg)
 - [C2 Containers](diagrams/architecture/C2_Containers.svg)
 - [C2 VM Containers](diagrams/architecture/C2_vm_containers.svg)
 - [C3 Telemetry Pipeline](diagrams/architecture/C3_telemetry_pipeline.svg)
+- [File lifecycle](diagrams/api/file-lifecycle.svg)
 
 ## Contributing
 

@@ -23,7 +23,7 @@ Why Markdown:
 
 ## 3. Diagrams
 
-Architecture diagrams are written in PlantUML (C4 model) and stored in `docs/diagrams/architecture/` as `.plantuml` sources next to their rendered `.svg` files.
+Architecture diagrams are written in PlantUML (C4 model) and stored in `docs/diagrams/architecture/` as `.plantuml` sources next to their rendered `.svg` files. Diagrams of how the API behaves (state and sequence diagrams) live the same way in `docs/diagrams/api/`.
 
 Include a rendered diagram in a document with an image link:
 
