@@ -1,6 +1,8 @@
 using Azure.Identity;
 using Kernel.CQRS;
 using Kernel.Endpoints;
+using Kernel.Files;
+using Kernel.Outbox;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -10,8 +12,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Graph;
 using Npgsql;
 using RecruitmentModule.Domain;
+using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
 using RecruitmentModule.Infrastructure.Entra;
+using RecruitmentModule.Infrastructure.Files;
 
 namespace RecruitmentModule;
 
@@ -24,13 +28,23 @@ public static class RecruitmentModule
     public static IServiceCollection AddRecruitmentModule(this IServiceCollection services)
     {
         // The host registers one NpgsqlDataSource ("healthyhires"); it carries the managed-identity sign-in in
-        // production, so the context reuses it instead of a connection string of its own.
+        // production, so the context reuses it instead of a connection string of its own. Change capture writes the
+        // module's outbox in the same save as each change (conventions.md § Outbox pattern), which the dispatcher drains.
         services.AddDbContextPool<RecruitmentDbContext>((sp, options) =>
-            options.UseNpgsql(
-                sp.GetRequiredService<NpgsqlDataSource>(),
-                npgsql => npgsql.EnableRetryOnFailure())); // ADR-A011 at the database layer
+            options
+                .UseNpgsql(
+                    sp.GetRequiredService<NpgsqlDataSource>(),
+                    npgsql => npgsql.EnableRetryOnFailure()) // ADR-A011 at the database layer
+                .AddChangeCapture(sp));
+        services.AddOutboxProducer<RecruitmentDbContext>();
 
         services.AddCqrsHandlers(typeof(RecruitmentModule).Assembly);
+
+        // The kinds of file the module's records reference (Infrastructure/Files), enforced by the Files module, and the
+        // columns that hold them, which the Files module follows through the outbox to confirm and release the files.
+        services.AddFilePurposes(typeof(RecruitmentModule).Assembly);
+        services.AddSingleton(new FileReference(ModuleTypes.ModuleName, "application_document",
+            [new FileColumn(nameof(ApplicationDocument.FileId), [ApplicationDocumentPurpose.PurposeKey])]));
 
         // Staff accounts live in Entra (iam.md §2.4). Like sign-in, the settings are required outside Development.
         services.AddOptions<StaffDirectoryOptions>()
