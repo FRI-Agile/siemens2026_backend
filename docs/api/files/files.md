@@ -210,8 +210,9 @@ learns its id; the Files module does not check it again.
 
 The upload endpoint is bounded by the per-IP rate limit like every anonymous endpoint
 ([ADR-A007](../../architecture/ADR-ASPNET.md#adr-a007-rate-limiting--aspnet-core-rate-limiting)). The ALTCHA check
-([ADR-022](../../architecture/ADR.md#adr-022-bot-protection--altcha-on-the-application-form)) is not implemented yet.
-Once it is, it belongs on this endpoint for anonymous callers.
+([ADR-022](../../architecture/ADR.md#adr-022-bot-protection--altcha-on-the-application-form)) guards the application
+submit (`Kernel.Altcha`, `.RequireAltcha()`), not yet this endpoint: each solution is accepted once, so requiring it
+here would make the form solve a challenge per file.
 
 **Content rules come from the purpose**, an `IFilePurpose` in Kernel:
 

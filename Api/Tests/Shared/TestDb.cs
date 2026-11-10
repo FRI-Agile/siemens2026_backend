@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using FilesModule.Infrastructure;
+using Kernel.Altcha;
 using Kernel.Idempotency;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -23,6 +24,10 @@ internal static class TestDb
     /// <param name="interceptors">Optional deterministic faults at the database command boundary.</param>
     public static IdempotencyDbContext NewIdempotencyContextOn(string connectionString, params IInterceptor[] interceptors) =>
         new(OptionsOn<IdempotencyDbContext>(connectionString).AddInterceptors(interceptors).Options);
+
+    /// <summary>A fresh ALTCHA context (the shared <c>kernel</c> schema).</summary>
+    public static AltchaDbContext NewAltchaContext() =>
+        new(Options<AltchaDbContext>().Options);
 
     /// <summary>A fresh Recruitment context (the <c>recruitment</c> schema).</summary>
     public static RecruitmentDbContext NewRecruitmentContext() =>

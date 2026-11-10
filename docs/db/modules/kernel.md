@@ -2,7 +2,7 @@
 
 **Service / owner:** the API host itself
 **Purpose:** infrastructure the host owns rather than any module — the HTTP idempotency records taken by
-middleware before routing has chosen a handler. They cannot live in a module's schema, because they do not
+middleware before routing has chosen a handler, and the spent ALTCHA solutions checked by a host endpoint filter. They cannot live in a module's schema, because they do not
 belong to a module — see [ADR-D001](../decision-log.md#adr-d001--idempotency-records-get-a-shared-kernel-schema-not-a-modules).
 
 **Tables**
@@ -10,9 +10,11 @@ belong to a module — see [ADR-D001](../decision-log.md#adr-d001--idempotency-r
 | Table | Purpose | Status |
 | ----- | ------- | ------ |
 | [`idempotency`](#idempotency) | One claimed or completed HTTP `Idempotency-Key`, with its captured response | **Documented** |
+| [`altcha_solution`](#altcha_solution) | One spent ALTCHA proof-of-work solution, until its challenge expires | **Documented** |
 
 The DDL is in `configs/postgres/init/01-create-db.sql` ([ADR-D002](../decision-log.md#adr-d002--the-schema-is-an-init-ddl-script-until-production));
-`IdempotencyDbContext` maps the table with `ExcludeFromMigrations`.
+`IdempotencyDbContext` maps `idempotency` with `ExcludeFromMigrations`; `AltchaDbContext` maps nothing and reaches
+`altcha_solution` with one SQL statement per operation.
 
 ## `idempotency`
 
@@ -74,3 +76,35 @@ The DDL is in `configs/postgres/init/01-create-db.sql` ([ADR-D002](../decision-l
 - **Bounded by retention.** `IdempotencyPruner` ([daily](../../api/scheduling/scheduling.md), 03:00 UTC) deletes records past `expires_at`, except
   unfinished claims whose lease is still live. The table is churn-heavy, hence its own autovacuum settings —
   see [ADR-D001](../decision-log.md#adr-d001--idempotency-records-get-a-shared-kernel-schema-not-a-modules).
+
+## `altcha_solution`
+
+> One row per ALTCHA challenge whose solution an applicant endpoint accepted, kept until the challenge expires, so each
+> solution is accepted only once ([ADR-022](../../architecture/ADR.md#adr-022-bot-protection--altcha-on-the-application-form)).
+
+**Audit:** none · **Soft delete:** no
+
+**Columns**
+
+| Column | Type | Key | Null | Default | Description |
+| ------ | ---- | --- | ---- | ------- | ----------- |
+| `challenge` | `TEXT` | PK | NO | | The hex SHA-256 of salt and number, which the API's signature covers |
+| `expires_at` | `TIMESTAMPTZ` | | NO | | The challenge's expiry, read from its salt; the row may be pruned after it |
+| `created_at` | `TIMESTAMPTZ` | | NO | `now()` | When the solution was spent |
+
+**Indexes**
+
+| Name | Columns | Type | Purpose |
+| ---- | ------- | ---- | ------- |
+| `PK_altcha_solution` | `(challenge)` | btree | The spend: `INSERT … ON CONFLICT DO NOTHING RETURNING`, so of two requests carrying one solution exactly one gets a row back |
+| `idx_altcha_solution_expires_at` | `(expires_at)` | btree | Age-based range delete for the retention pruner |
+
+**Notes**
+
+- **Keyed by the signed hash, not the salt.** The client sends salt, number and hash; the API re-derives the hash and
+  checks the signature over it. Keying on the hash means re-splitting the same digits between salt and number cannot
+  spend one challenge twice.
+- **Durable for the same reason as `idempotency`.** In memory, a deployment would make every solution of the last
+  challenge lifetime (20 minutes by default) replayable.
+- **Bounded by retention.** `AltchaSolutionPruner` (daily, 03:10 UTC) deletes rows past `expires_at`; an expired
+  challenge is refused on its expiry alone. Insert-and-delete churn, hence the same autovacuum settings as `idempotency`.

@@ -11,6 +11,7 @@ using Asp.Versioning;
 using Asp.Versioning.Builder;
 using FilesModule;
 using FilesModule.Infrastructure.FileStorage;
+using Kernel.Altcha;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Errors;
@@ -159,6 +160,15 @@ builder.Services.AddDbIdempotencyStore(
         npgsql => npgsql.EnableRetryOnFailure()), // ADR-A011 at the database layer
     new TimeOnly(3, 0));
 
+// ADR-022: ALTCHA on the anonymous application form. Spent solutions go to Postgres (kernel.altcha_solution) like the
+// idempotency claims, so a restart does not make the last challenges' solutions replayable. The signing key comes from
+// Key Vault in production (Altcha__HmacKey); Development signs with a key of its own. Pruned daily at 03:10 UTC.
+builder.Services.AddAltcha(
+    (sp, options) => options.UseNpgsql(
+        sp.GetRequiredService<NpgsqlDataSource>(),
+        npgsql => npgsql.EnableRetryOnFailure()), // ADR-A011 at the database layer
+    new TimeOnly(3, 10));
+
 // ADR-A004: API Versioning + OpenAPI
 builder.Services
     .AddApiVersioning(options =>
@@ -296,6 +306,7 @@ RouteGroupBuilder api = app.MapGroup("/api/v{version:apiVersion}")
 
 api.MapGet("/hello", () => "Hello, HealthyHires!");
 api.MapMe();
+api.MapAltchaChallenge();
 api.MapFilesModule();
 api.MapRecruitmentModule();
 // ─────────────────────────────────────────────────────────

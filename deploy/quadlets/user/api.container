@@ -11,8 +11,13 @@ ReadOnly=true
 Tmpfs=/tmp
 NoNewPrivileges=true
 DropCapability=ALL
+# The ALTCHA signing key (ADR-022) is read from Key Vault at every start and the Podman copy deleted once the container
+# has it, like the Collector's connection string (ADR-012: no secret on disk).
+Secret=altcha-hmac-key,type=env,target=Altcha__HmacKey
 
 [Service]
+ExecStartPre=/usr/local/bin/hh-podman-secret altcha-hmac-key
+ExecStartPost=/usr/bin/podman secret rm altcha-hmac-key
 Restart=always
 
 [Install]
