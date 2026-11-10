@@ -3,8 +3,9 @@ using Kernel.Files;
 namespace RecruitmentModule.Infrastructure.Files;
 
 /// <summary>
-/// A file a candidate submits with an application — a CV, a cover letter, a certificate (docs/api/files/files.md §11).
-/// Documents only: what staff open and what the CV scoring reads (ADR-024).
+/// A file a candidate submits with an application — a CV, a cover letter, a certificate (docs/api/files/files.md §11):
+/// PDF, Word (<c>.doc</c>, <c>.docx</c>) or a JPEG/PNG scan or photo, at most 10 MB. Staff open them, and the CV scoring
+/// reads the CV (ADR-024), which for an image means reading the picture.
 /// </summary>
 internal sealed class ApplicationDocumentPurpose : IFilePurpose
 {
@@ -17,7 +18,8 @@ internal sealed class ApplicationDocumentPurpose : IFilePurpose
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.oasis.opendocument.text",
+        "image/jpeg",
+        "image/png",
     };
 
     public long MaxSizeBytes => 10L * 1024 * 1024;
