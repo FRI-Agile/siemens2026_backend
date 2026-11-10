@@ -2,8 +2,8 @@ namespace RecruitmentModule.Domain.Entity;
 
 /// <summary>A person who applied to at least one job post (<c>recruitment.candidate</c>), one per e-mail.</summary>
 /// <remarks>
-/// Created by the first application carrying the e-mail. Applicants are anonymous, so there is no <c>created_by</c>
-/// (ADR-D008).
+/// Created by the first application carrying the e-mail; a later one is linked to it without changing it, since nothing
+/// verifies the address. Applicants are anonymous, so there is no <c>created_by</c> (ADR-D008).
 /// </remarks>
 public sealed class Candidate
 {
@@ -19,8 +19,8 @@ public sealed class Candidate
     /// <summary>Unique without regard to case.</summary>
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>E.164, e.g. <c>+421905123456</c>.</summary>
-    public string PhoneNumber { get; set; } = string.Empty;
+    /// <summary>E.164, e.g. <c>+421905123456</c>; optional on the application form.</summary>
+    public string? PhoneNumber { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 

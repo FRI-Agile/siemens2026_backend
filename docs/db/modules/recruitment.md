@@ -146,7 +146,7 @@ change both together.
 | `last_name` | `TEXT` |  | NO |  | Last name (*priezvisko*) |
 | `display_name` | `TEXT` |  | NO | generated | `first_name \|\| ' ' \|\| last_name`, a stored generated column; the name search's column |
 | `email` | `TEXT` | UQ | NO |  | Contact e-mail; unique on `lower(email)` |
-| `phone_number` | `TEXT` |  | NO |  | Contact phone in E.164 (`+421905123456`), normalised by the application |
+| `phone_number` | `TEXT` |  | YES |  | Contact phone in E.164 (`+421905123456`); optional on the application form, which takes it in this form only |
 
 **Constraints**
 
@@ -155,7 +155,7 @@ change both together.
 | `candidate_first_name_valid` | CHECK | `btrim(first_name) <> ''` | No blank first name |
 | `candidate_last_name_valid` | CHECK | `btrim(last_name) <> ''` | No blank last name |
 | `candidate_email_valid` | CHECK | `email ~ '^[^@\s]+@[^@\s]+$'` | One `@` between non-blank parts; the application validates further |
-| `candidate_phone_number_valid` | CHECK | `phone_number ~ '^\+[1-9][0-9]{6,14}$'` | E.164 only |
+| `candidate_phone_number_valid` | CHECK | `phone_number ~ '^\+[1-9][0-9]{6,14}$'` | E.164 only, when given |
 
 **Indexes**
 
@@ -177,7 +177,9 @@ change both together.
 - **Identified by e-mail.** The first application carrying an e-mail creates the row; a later one with the same e-mail
   (any case) is linked to it. Applicants are anonymous and nothing verifies the address, so a later application does
   **not** change the stored name or phone — otherwise anyone could rewrite a candidate by applying with their e-mail.
-  Staff correct the details, hence `updated_by`.
+  Staff correct the details, hence `updated_by`. The lookup is `lower(email) = lower(@email)`, both sides lowered by
+  PostgreSQL as the unique index compares them; two first applications with one e-mail racing each other meet on the
+  index, and the loser links to the winner's row.
 - **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
   never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
   columns joined with `OR` would not.
@@ -246,8 +248,14 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 
 **Notes**
 
-- **Only published posts take applications.** The submitting command checks `job_post.status = 'published'`; a CHECK
-  cannot look at another row. Closing a post later leaves its applications as they are.
+- **Only published posts take applications.** The submitting command (`SubmitApplication`) checks
+  `job_post.status = 'published'`; a CHECK cannot look at another row. A draft answers `404`, as it is invisible to
+  applicants, and a closed post `409`. Closing a post later leaves its applications as they are.
+- **Applying twice to one post is refused, not merged.** The second application with the same e-mail (any case) is
+  answered `409` and changes nothing: the applicant is anonymous, so replacing the first application's documents would
+  let anyone who knows the e-mail overwrite it. A retry of the *same* submission carries the same `Idempotency-Key` and
+  gets the first response replayed instead. Two submissions racing each other meet on
+  `uq_application_job_post_id_candidate_id`, and the loser is answered the same `409`.
 - **Status moves `nová žiadosť → predvýber → pohovor → ponuka → prijatý`, and `odmietnutý` from any step before
   `prijatý`.** Staff
   move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
@@ -303,6 +311,7 @@ copy is `ApplicationDocumentTypes` in `RecruitmentVocabulary.cs`; change both to
 | *(PK)* | `(id)` | btree | Lookup by id |
 | `idx_application_document_application_id` | `(application_id)` | btree | An application's documents; the cascade from `application` |
 | `uq_application_document_file_id` | `(file_id)` | unique | A file belongs to one reference: two rows naming it would have the first one's release delete it under the second |
+| `uq_application_document_application_id_type` | `(application_id, type) WHERE type IN ('životopis','motivačný list')` | unique, partial | At most one CV and one cover letter per application, so "the application's CV" is one row; the lookup the staff detail and the AI scoring make |
 
 **Triggers**
 
@@ -317,6 +326,15 @@ copy is `ApplicationDocumentTypes` in `RecruitmentVocabulary.cs`; change both to
   files. Inserting a row confirms its file once the outbox delivers the change; deleting it, or pointing it at another
   file, releases the old one. The write handler calls `IFileReferences.ValidateAsync` before saving, so a bad upload fails
   the write.
+- **The CV is the row with `type = 'životopis'`.** The application form requires one and allows one cover letter
+  (`motivačný list`); `uq_application_document_application_id_type` keeps both to one row per application, so the AI
+  scoring (ADR-024) reads an application's CV by `(application_id, 'životopis')` with no ambiguity. The form takes up to
+  3 `iné` documents (`ApplicationDocumentTypes.MaxOther`); the table does not limit them, so staff could add more later.
+- **Every document is PDF, Word (`.doc`, `.docx`), JPEG or PNG, at most 10 MB** — the `application_document` file
+  purpose, enforced by the Files module at upload and again on the stored object before the row is saved. A CV may
+  therefore be an image, which the AI scoring has to read as one.
+- **Each application references its own upload.** Re-sending a file id already attached to another application is
+  refused with `400` on that field (`uq_application_document_file_id`): the client uploads the file again.
 - **Staff see clean files only:** a file is downloadable once ClamAV cleared it, which the download endpoint checks.
 - **Deletes the outbox cannot see.** Deleting an `application` or a `candidate` cascades to these rows in the database.
   That feature reads the rows' `file_id`s first and publishes `files_released` in the same transaction.
