@@ -24,6 +24,9 @@ public static class ModuleEvents
 
     /// <summary>A hiring manager reopened a closed job post.</summary>
     public const string JobPostReopened = "job_post_reopened";
+
+    /// <summary>A candidate applied to a published job post through the public form.</summary>
+    public const string ApplicationSubmitted = "application_submitted";
 }
 
 /// <summary>Where a job post is in its life (<c>job_post.status</c>).</summary>
@@ -109,6 +112,10 @@ public static class ApplicationStatuses
 }
 
 /// <summary>What a file submitted with an application is (<c>application_document.type</c>; Slovak codes, ADR-D009).</summary>
+/// <remarks>
+/// An application has at most one <see cref="Cv"/> and one <see cref="CoverLetter"/>, which the database enforces, and the
+/// form takes up to <see cref="MaxOther"/> <see cref="Other"/> documents.
+/// </remarks>
 public static class ApplicationDocumentTypes
 {
     /// <summary>Curriculum vitae (<i>životopis</i>).</summary>
@@ -119,4 +126,7 @@ public static class ApplicationDocumentTypes
 
     /// <summary>Anything else: certificates, references, a portfolio.</summary>
     public const string Other = "iné";
+
+    /// <summary>How many <see cref="Other"/> documents the application form takes; the table does not limit them.</summary>
+    public const int MaxOther = 3;
 }
