@@ -216,54 +216,27 @@ CREATE TRIGGER trg_job_post_set_audit
     BEFORE UPDATE ON recruitment.job_post
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
 
--- candidate  (a person who applied to at least one job post)
--- Applicants are anonymous (ADD §2), so a row is created by the first application carrying its e-mail and has no
--- `created_by` (ADR-D008); staff may correct it later, hence `updated_by`. One row per e-mail, compared without case:
--- a later application with a known e-mail is linked to the existing row and does not change it, as nothing proves
--- the applicant owns the address.
+-- application  (one person's application to one job post; žiadosť)
+-- Each job post has its own applicants: the row carries who applied (name, e-mail, phone) as they filled in the form,
+-- and there is no shared candidate table (ADR-D010). Someone applying to two posts is two unrelated rows, each with the
+-- details typed for it. Submitted by the anonymous applicant to a published post (checked by the application), so no
+-- `created_by` (ADR-D008); staff correct the details and move the status, hence `updated_by`.
+--
+-- Staff move it through the hiring pipeline: `nová žiadosť -> predvýber -> pohovor -> ponuka -> prijatý`, and
+-- `odmietnutý` from any step before `prijatý`. The codes are the Slovak terms as written (ADR-D009).
 --
 -- `display_name` is generated from the two name parts, so the name search has one column to index and match
--- ("Martin Kaš…" as well as "Kašuba"). `phone_number` is E.164 (`+421905123456`), normalised by the application.
-CREATE TABLE recruitment.candidate (
+-- ("Martin Kaš…" as well as "Kašuba"). `phone_number` is E.164 (`+421905123456`) and optional on the form.
+--
+-- The job post must not disappear under its applications, so RESTRICT; posts are closed, never deleted.
+CREATE TABLE recruitment.application (
     id            UUID         PRIMARY KEY DEFAULT uuidv7(),
+    job_post_id   UUID         NOT NULL,
     first_name    TEXT         NOT NULL,
     last_name     TEXT         NOT NULL,
     display_name  TEXT         NOT NULL GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED,
     email         TEXT         NOT NULL,
     phone_number  TEXT,                   -- E.164; optional on the application form
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ,
-    updated_by    UUID,
-    version       SMALLINT     NOT NULL DEFAULT 1,
-    CONSTRAINT candidate_first_name_valid CHECK (btrim(first_name) <> ''),
-    CONSTRAINT candidate_last_name_valid CHECK (btrim(last_name) <> ''),
-    CONSTRAINT candidate_email_valid CHECK (email ~ '^[^@\s]+@[^@\s]+$'),
-    CONSTRAINT candidate_phone_number_valid CHECK (phone_number ~ '^\+[1-9][0-9]{6,14}$')
-);
--- One candidate per e-mail, regardless of case; also the lookup a new application makes.
-CREATE UNIQUE INDEX uq_candidate_email ON recruitment.candidate (lower(email));
--- The candidate search, `immutable_unaccent(display_name) ILIKE immutable_unaccent('%…%') OR` the same on `email`:
--- a trigram index per column over the unaccented text, combined with a BitmapOr like the job post search.
-CREATE INDEX idx_candidate_display_name
-    ON recruitment.candidate USING gin (recruitment.immutable_unaccent(display_name) public.gin_trgm_ops);
-CREATE INDEX idx_candidate_email
-    ON recruitment.candidate USING gin (recruitment.immutable_unaccent(email) public.gin_trgm_ops);
-CREATE TRIGGER trg_candidate_set_audit
-    BEFORE UPDATE ON recruitment.candidate
-    FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
-
--- application  (a candidate's application to one job post; žiadosť)
--- Submitted by the anonymous candidate to a published post (checked by the application), so no `created_by`
--- (ADR-D008). Staff then move it through the hiring pipeline:
--- `nová žiadosť -> predvýber -> pohovor -> ponuka -> prijatý`, and `odmietnutý` from any step before `prijatý`. The
--- codes are the Slovak terms as written (ADR-D009). A candidate applies to a post once.
---
--- The job post must not disappear under its applications, so RESTRICT; posts are closed, never deleted. An
--- application means nothing without its candidate, so erasing a candidate erases their applications.
-CREATE TABLE recruitment.application (
-    id            UUID         PRIMARY KEY DEFAULT uuidv7(),
-    job_post_id   UUID         NOT NULL,
-    candidate_id  UUID         NOT NULL,
     status        TEXT         NOT NULL DEFAULT 'nová žiadosť',  -- nová žiadosť / predvýber / pohovor / ponuka / prijatý / odmietnutý
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ,
@@ -271,31 +244,36 @@ CREATE TABLE recruitment.application (
     version       SMALLINT     NOT NULL DEFAULT 1,
     CONSTRAINT application_job_post_fk
         FOREIGN KEY (job_post_id) REFERENCES recruitment.job_post (id) ON DELETE RESTRICT,
-    CONSTRAINT application_candidate_fk
-        FOREIGN KEY (candidate_id) REFERENCES recruitment.candidate (id) ON DELETE CASCADE,
+    CONSTRAINT application_first_name_valid CHECK (btrim(first_name) <> ''),
+    CONSTRAINT application_last_name_valid CHECK (btrim(last_name) <> ''),
+    CONSTRAINT application_email_valid CHECK (email ~ '^[^@\s]+@[^@\s]+$'),
+    CONSTRAINT application_phone_number_valid CHECK (phone_number ~ '^\+[1-9][0-9]{6,14}$'),
     CONSTRAINT application_status_valid CHECK (status IN (
         'nová žiadosť', 'predvýber', 'pohovor', 'ponuka', 'prijatý', 'odmietnutý'))
 );
--- One application per candidate and post. Leading with the post, it is also the job post detail's lookup of the
--- post's applications.
-CREATE UNIQUE INDEX uq_application_job_post_id_candidate_id
-    ON recruitment.application (job_post_id, candidate_id);
--- A candidate's applications, and the FK's index for the cascade from candidate.
-CREATE INDEX idx_application_candidate_id ON recruitment.application (candidate_id);
+-- One application per e-mail and post, regardless of case: applying again to the same post is refused. Leading with
+-- the post, it is also the job post detail's lookup of the post's applications.
+CREATE UNIQUE INDEX uq_application_job_post_id_email ON recruitment.application (job_post_id, lower(email));
+-- The applicant search, `immutable_unaccent(display_name) ILIKE immutable_unaccent('%…%') OR` the same on `email`:
+-- a trigram index per column over the unaccented text, combined with a BitmapOr like the job post search.
+CREATE INDEX idx_application_display_name
+    ON recruitment.application USING gin (recruitment.immutable_unaccent(display_name) public.gin_trgm_ops);
+CREATE INDEX idx_application_email
+    ON recruitment.application USING gin (recruitment.immutable_unaccent(email) public.gin_trgm_ops);
 CREATE TRIGGER trg_application_set_audit
     BEFORE UPDATE ON recruitment.application
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
 
--- application_document  (a file the candidate submitted with an application: CV, cover letter, …)
+-- application_document  (a file the applicant submitted with an application: CV, cover letter, …)
 -- What the document is (`type`) and which file it is (`file_id`). The file itself — its name, type, size, bytes and
 -- malware scan — belongs to the Files module (`files.file`), referenced logically with no foreign key. The entity is
 -- change-captured, so the Files module confirms the file when a row gains it and releases it when the row goes, through
 -- this module's outbox (docs/api/files/files.md §9). The codes are the Slovak terms as written (ADR-D009).
 --
--- A row deleted by the cascade from `application` (and so from `candidate`) is not captured: a feature deleting either
--- publishes `files_released` with the documents' file ids in the same transaction.
+-- A row deleted by the cascade from `application` is not captured: a feature deleting an application publishes
+-- `files_released` with the documents' file ids in the same transaction.
 --
--- Written by the anonymous candidate and then only by the system, so neither `created_by` nor `updated_by`
+-- Written by the anonymous applicant and then only by the system, so neither `created_by` nor `updated_by`
 -- (ADR-D008).
 CREATE TABLE recruitment.application_document (
     id              UUID         PRIMARY KEY DEFAULT uuidv7(),

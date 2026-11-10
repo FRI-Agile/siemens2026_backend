@@ -315,7 +315,7 @@ its file even if delivery is held up for hours.
 ### 9.4 Deletes the outbox cannot see (files_released)
 
 Change capture sees only what EF Core tracks. A row the database deletes by `ON DELETE CASCADE` — an
-`application_document` when its application or candidate is deleted — or with `ExecuteDelete` never produces a change.
+`application_document` when its application is deleted — or with `ExecuteDelete` never produces a change.
 The feature that does such a delete reads the files the rows reference first, and publishes **`files_released`** in the
 same transaction; **`FileReleaseHandler`** releases them:
 

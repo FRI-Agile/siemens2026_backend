@@ -15,9 +15,9 @@ using ValidationException = Kernel.Exceptions.ValidationException;
 namespace Tests.RecruitmentModule.Features.ApplicationFeatures.SubmitApplication;
 
 /// <summary>
-/// The public application form: the first application with an e-mail creates the candidate, a later one is linked to it
-/// without changing it, and the CV and cover letter become typed documents. A second application to the same post, a
-/// post that is not open, and a file that cannot be referenced are refused, leaving nothing behind.
+/// The public application form: the application carries the applicant's details as typed, and the CV, cover letter and
+/// other documents become typed documents. Each post has its own applicants. A second application with one e-mail to
+/// the same post, a post that is not open, and a file that cannot be referenced are refused, leaving nothing behind.
 /// </summary>
 public class SubmitApplicationHandlerTests
 {
@@ -74,7 +74,7 @@ public class SubmitApplicationHandlerTests
     }
 
     [Fact]
-    public async Task Creates_the_candidate_and_the_application_with_its_cv_and_cover_letter()
+    public async Task Stores_the_application_with_the_applicant_and_its_cv_and_cover_letter()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
@@ -85,11 +85,11 @@ public class SubmitApplicationHandlerTests
         SubmitApplicationResponse response = await new SubmitApplicationHandler(db, files).HandleAsync(form, ct);
 
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
-        Application stored = await read.Applications.Include(a => a.Candidate).Include(a => a.Documents).SingleAsync(ct);
+        Application stored = await read.Applications.Include(a => a.Documents).SingleAsync(ct);
         Assert.Equal((response.Id, post.Id, ApplicationStatuses.New), (stored.Id, stored.JobPostId, stored.Status));
         Assert.Equal((ApplicationStatuses.New, stored.CreatedAt), (response.Status, response.CreatedAt));
         Assert.Equal(("Martin", "Kašuba", "kasuba7@stud.uniza.sk", "+421905123456"),
-            (stored.Candidate!.FirstName, stored.Candidate.LastName, stored.Candidate.Email, stored.Candidate.PhoneNumber));
+            (stored.FirstName, stored.LastName, stored.Email, stored.PhoneNumber));
         Assert.Equal(form.CvFileId, stored.Documents.Single(d => d.Type == ApplicationDocumentTypes.Cv).FileId);
         Assert.Equal(form.CoverLetterFileId, stored.Documents.Single(d => d.Type == ApplicationDocumentTypes.CoverLetter).FileId);
         Assert.Equal(
@@ -111,7 +111,7 @@ public class SubmitApplicationHandlerTests
             .HandleAsync(Form(post) with { PhoneNumber = phone, CoverLetterFileId = null }, ct);
 
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
-        Assert.Null((await read.Candidates.SingleAsync(ct)).PhoneNumber);
+        Assert.Null((await read.Applications.SingleAsync(ct)).PhoneNumber);
         Assert.Equal(ApplicationDocumentTypes.Cv, (await read.ApplicationDocuments.SingleAsync(ct)).Type);
     }
 
@@ -164,7 +164,7 @@ public class SubmitApplicationHandlerTests
     }
 
     [Fact]
-    public async Task A_returning_candidate_is_linked_by_email_whatever_its_case_and_left_unchanged()
+    public async Task The_same_email_on_another_post_is_a_separate_application_with_its_own_details()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
@@ -175,14 +175,14 @@ public class SubmitApplicationHandlerTests
         db.ChangeTracker.Clear();
 
         await handler.HandleAsync(
-            Form(second, "KASUBA7@stud.uniza.sk") with { FirstName = "Niekto", LastName = "Iný", PhoneNumber = null }, ct);
+            Form(second, "KASUBA7@stud.uniza.sk") with { LastName = "Kašuba-Nový", PhoneNumber = null }, ct);
 
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
-        Candidate candidate = await read.Candidates.SingleAsync(ct);
-        Assert.Equal(("Martin Kašuba", "kasuba7@stud.uniza.sk", "+421905123456"),
-            (candidate.DisplayName, candidate.Email, candidate.PhoneNumber));
-        Assert.Null(candidate.UpdatedAt);
-        Assert.Equal([candidate.Id, candidate.Id], await read.Applications.Select(a => a.CandidateId).ToListAsync(ct));
+        Application onFirst = await read.Applications.SingleAsync(a => a.JobPostId == first.Id, ct);
+        Application onSecond = await read.Applications.SingleAsync(a => a.JobPostId == second.Id, ct);
+        Assert.Equal(("Martin Kašuba", "+421905123456"), (onFirst.DisplayName, onFirst.PhoneNumber));
+        Assert.Null(onFirst.UpdatedAt);
+        Assert.Equal(("Martin Kašuba-Nový", "KASUBA7@stud.uniza.sk", null), (onSecond.DisplayName, onSecond.Email, onSecond.PhoneNumber));
     }
 
     [Fact]
@@ -205,43 +205,14 @@ public class SubmitApplicationHandlerTests
     }
 
     [Fact]
-    public async Task A_first_application_racing_another_with_the_same_email_is_linked_to_its_candidate()
-    {
-        CancellationToken ct = TestContext.Current.CancellationToken;
-        string connectionString = TestDb.NewDatabase();
-        JobPost post, other;
-        await using (RecruitmentDbContext seed = TestDb.NewRecruitmentContextOn(connectionString))
-        {
-            post = await SeedPostAsync(seed, ct);
-            other = await SeedPostAsync(seed, ct);
-        }
-        // The other application commits between this one's lookup (no candidate yet) and its save.
-        BeforeFirstSave race = new(async () =>
-        {
-            await using RecruitmentDbContext concurrent = TestDb.NewRecruitmentContextOn(connectionString);
-            await new SubmitApplicationHandler(concurrent, new FakeFileReferences()).HandleAsync(Form(other), ct);
-        });
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContextOn(connectionString, race);
-
-        await new SubmitApplicationHandler(db, new FakeFileReferences()).HandleAsync(Form(post), ct);
-
-        await using RecruitmentDbContext read = TestDb.NewRecruitmentContextOn(connectionString);
-        Candidate candidate = await read.Candidates.SingleAsync(ct);
-        Assert.Equal(2, await read.Applications.CountAsync(a => a.CandidateId == candidate.Id, ct));
-    }
-
-    [Fact]
     public async Task A_second_submission_racing_the_first_to_one_post_is_a_conflict()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         string connectionString = TestDb.NewDatabase();
         JobPost post;
         await using (RecruitmentDbContext seed = TestDb.NewRecruitmentContextOn(connectionString))
-        {
             post = await SeedPostAsync(seed, ct);
-            seed.Candidates.Add(CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk"));
-            await seed.SaveChangesAsync(ct);
-        }
+        // The other submission commits between this one's check (no application yet) and its save.
         BeforeFirstSave race = new(async () =>
         {
             await using RecruitmentDbContext concurrent = TestDb.NewRecruitmentContextOn(connectionString);
@@ -268,7 +239,7 @@ public class SubmitApplicationHandlerTests
         await Assert.ThrowsAsync<NotFoundException>(
             () => new SubmitApplicationHandler(db, new FakeFileReferences()).HandleAsync(Form(post), ct));
 
-        Assert.False(await db.Candidates.AnyAsync(ct));
+        Assert.False(await db.Applications.AnyAsync(ct));
     }
 
     [Fact]
@@ -282,7 +253,7 @@ public class SubmitApplicationHandlerTests
             () => new SubmitApplicationHandler(db, new FakeFileReferences()).HandleAsync(Form(post), ct));
 
         Assert.Contains("uzavretá", e.Message);
-        Assert.False(await db.Candidates.AnyAsync(ct));
+        Assert.False(await db.Applications.AnyAsync(ct));
     }
 
     [Fact]
@@ -313,7 +284,7 @@ public class SubmitApplicationHandlerTests
             () => new SubmitApplicationHandler(db, files).HandleAsync(form, ct));
 
         Assert.Equal([nameof(form.CoverLetterFileId)], e.Errors.Keys);
-        Assert.False(await db.Candidates.AnyAsync(ct));
+        Assert.False(await db.Applications.AnyAsync(ct));
     }
 
     [Fact]
@@ -333,7 +304,7 @@ public class SubmitApplicationHandlerTests
 
         Assert.Equal([nameof(earlier.CvFileId)], e.Errors.Keys);
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
-        Assert.Equal(1, await read.Candidates.CountAsync(ct));
+        Assert.Equal(1, await read.Applications.CountAsync(ct));
     }
 
     [Fact]

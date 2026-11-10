@@ -14,8 +14,8 @@ using ValidationException = Kernel.Exceptions.ValidationException;
 namespace RecruitmentModule.Features.ApplicationFeatures.SubmitApplication;
 
 /// <summary>
-/// An anonymous applicant applies to a published job post with their CV and, optionally, a cover letter. The first
-/// application carrying an e-mail creates the candidate; a later one is linked to it.
+/// An anonymous applicant applies to a published job post with their CV and, optionally, a cover letter and other
+/// documents. The application carries the applicant's details as typed; each post has its own applicants (ADR-D010).
 /// </summary>
 public sealed record SubmitApplicationCommand : ICommand
 {
@@ -100,27 +100,43 @@ internal sealed class SubmitApplicationHandler(RecruitmentDbContext db, IFileRef
         foreach (Attachment attachment in attachments)
             await files.ValidateAsync(attachment.FileId, attachment.Field, DocumentPurposes, ct);
 
+        // Read first, so the common case is a clean 409 rather than a failed insert; the unique index settles a race.
+        bool applied = await db.Applications
+            .FromSql($"""
+                      SELECT * FROM recruitment.application
+                      WHERE job_post_id = {command.JobPostId} AND lower(email) = lower({command.Email})
+                      """)
+            .AnyAsync(ct);
+        if (applied)
+            throw AlreadyApplied();
+
+        Application application = new()
+        {
+            Id = Guid.CreateVersion7(),
+            JobPostId = command.JobPostId,
+            FirstName = command.FirstName.Trim(),
+            LastName = command.LastName.Trim(),
+            Email = command.Email,
+            PhoneNumber = string.IsNullOrEmpty(command.PhoneNumber) ? null : command.PhoneNumber,
+            Documents = [.. attachments.Select(a => new ApplicationDocument
+            {
+                Id = Guid.CreateVersion7(),
+                Type = a.Type,
+                FileId = a.FileId,
+            })],
+        };
+        db.Applications.Add(application);
+
         try
         {
-            return await SaveAsync(command, attachments, ct);
-        }
-        catch (DbUpdateException e) when (ViolatedConstraint(e) == "uq_candidate_email")
-        {
-            // Another first application with this e-mail created the candidate in between: link this one to it.
-            db.ChangeTracker.Clear();
-            try
-            {
-                return await SaveAsync(command, attachments, ct);
-            }
-            catch (DbUpdateException again) when (ViolatedConstraint(again) is { } constraint)
-            {
-                throw await RefusalAsync(attachments, constraint, again, ct);
-            }
+            await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException e) when (ViolatedConstraint(e) is { } constraint)
         {
             throw await RefusalAsync(attachments, constraint, e, ct);
         }
+
+        return new SubmitApplicationResponse(application.Id, application.JobPostId, application.Status, application.CreatedAt);
     }
 
     /// <summary>One file on the form: the request field that carried it and what it becomes.</summary>
@@ -137,53 +153,6 @@ internal sealed class SubmitApplicationHandler(RecruitmentDbContext db, IFileRef
         return attachments;
     }
 
-    /// <summary>Links the application to the e-mail's candidate, creating it on the first application, and saves it.</summary>
-    private async Task<SubmitApplicationResponse> SaveAsync(
-        SubmitApplicationCommand command, IReadOnlyList<Attachment> attachments, CancellationToken ct)
-    {
-        // Both sides lowered by PostgreSQL, exactly as uq_candidate_email compares them, and served by that index.
-        Candidate? candidate = await db.Candidates
-            .FromSql($"SELECT * FROM recruitment.candidate WHERE lower(email) = lower({command.Email})")
-            .SingleOrDefaultAsync(ct);
-
-        if (candidate is null)
-        {
-            candidate = new Candidate
-            {
-                Id = Guid.CreateVersion7(),
-                FirstName = command.FirstName.Trim(),
-                LastName = command.LastName.Trim(),
-                Email = command.Email,
-                PhoneNumber = string.IsNullOrEmpty(command.PhoneNumber) ? null : command.PhoneNumber,
-            };
-            db.Candidates.Add(candidate);
-        }
-        // Nothing verifies the e-mail, so a returning candidate's stored details stay as they are; staff correct them.
-        else if (await db.Applications.AnyAsync(
-                     a => a.JobPostId == command.JobPostId && a.CandidateId == candidate.Id, ct))
-        {
-            throw AlreadyApplied();
-        }
-
-        Application application = new()
-        {
-            Id = Guid.CreateVersion7(),
-            JobPostId = command.JobPostId,
-            Candidate = candidate,
-            Documents = [.. attachments.Select(a => new ApplicationDocument
-            {
-                Id = Guid.CreateVersion7(),
-                Type = a.Type,
-                FileId = a.FileId,
-            })],
-        };
-
-        db.Applications.Add(application);
-        await db.SaveChangesAsync(ct);
-
-        return new SubmitApplicationResponse(application.Id, application.JobPostId, application.Status, application.CreatedAt);
-    }
-
     /// <summary>What to answer a save that broke <paramref name="constraint"/>, which a concurrent request got to first.</summary>
     private async Task<Exception> RefusalAsync(
         IReadOnlyList<Attachment> attachments, string constraint, DbUpdateException cause, CancellationToken ct)
@@ -191,7 +160,8 @@ internal sealed class SubmitApplicationHandler(RecruitmentDbContext db, IFileRef
         db.ChangeTracker.Clear();
         switch (constraint)
         {
-            case "uq_application_job_post_id_candidate_id":
+            // Two submissions with one e-mail racing each other, e.g. a double click with two keys.
+            case "uq_application_job_post_id_email":
                 return AlreadyApplied();
 
             // A file already attached to an application, e.g. the CV uploaded for a previous one. Each application

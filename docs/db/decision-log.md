@@ -148,7 +148,8 @@ Applicants have no account ([ADD §2](../architecture/ADD.md#2-purpose)), so the
   the system moves its status.
 - `version` and the audit trigger stay on all three. A candidate is identified by e-mail (`uq_candidate_email`), and a
   later application with a known e-mail is linked to the existing candidate without changing it, since nothing proves
-  the applicant owns the address.
+  the applicant owns the address. *(Superseded by ADR-D010: `candidate` is gone, and its details live on
+  `application`, which keeps the same rules.)*
 
 ---
 
@@ -171,3 +172,26 @@ schema 0.4.0 on, a `CHECK`-guarded value set stores the Slovak term itself, as w
 - `job_post`'s value sets (`status`, `payment_type`, `employment_type`) predate this decision and keep their English
   codes. Moving them means a data migration in Azure and a matching API and frontend change, so it is a change of its
   own.
+
+---
+
+## ADR-D010 — Applicants belong to the job post; no shared candidate
+
+**Date:** 2026-11-10 · **Status:** accepted · **Supersedes:** the `candidate` table of schema 0.4.0 (ADR-D008's note)
+
+Staff work with applicants one job post at a time: the job post detail lists who applied to that post and moves each
+through the pipeline. No screen shows a person across posts, or which posts someone applied to. A shared `candidate`
+row, one per e-mail, linked applications nobody looks at together — and cost a lookup, a race between two first
+applications with one e-mail, and a rule that a later application must not change the stored name or phone.
+
+- `recruitment.candidate` is dropped. `application` carries `first_name`, `last_name`, the generated `display_name`,
+  `email` and `phone_number`, as typed on that post's form, with the same CHECKs and the same accent-insensitive
+  trigram indexes.
+- Someone applying to two posts is two unrelated rows, each with its own details, documents and status. Correcting
+  one does not touch the other.
+- A post takes one application per e-mail, compared without case: `uq_application_job_post_id_email` on
+  `(job_post_id, lower(email))`. A second one is refused with `409`, not merged, since nothing proves the applicant owns
+  the address.
+- Erasing a person's data (GDPR) means deleting their applications by e-mail, each publishing `files_released`.
+- Should a cross-post view ever be needed, it can group applications by `lower(email)`, which the unique index's
+  expression already supports per post.

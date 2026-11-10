@@ -14,11 +14,15 @@ internal sealed class ApplicationConfiguration : IEntityTypeConfiguration<Applic
 
         b.Property(a => a.Id).HasColumnName("id").ValueGeneratedNever();
         b.Property(a => a.JobPostId).HasColumnName("job_post_id");
-        b.Property(a => a.CandidateId).HasColumnName("candidate_id");
+        b.Property(a => a.FirstName).HasColumnName("first_name");
+        b.Property(a => a.LastName).HasColumnName("last_name");
+        // A stored generated column: the database computes it from the name parts on every write.
+        b.Property(a => a.DisplayName).HasColumnName("display_name").ValueGeneratedOnAddOrUpdate();
+        b.Property(a => a.Email).HasColumnName("email");
+        b.Property(a => a.PhoneNumber).HasColumnName("phone_number");
         b.Property(a => a.Status).HasColumnName("status");
 
         b.HasOne<JobPost>().WithMany().HasForeignKey(a => a.JobPostId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne(a => a.Candidate).WithMany().HasForeignKey(a => a.CandidateId).OnDelete(DeleteBehavior.Cascade);
         b.HasMany(a => a.Documents).WithOne().HasForeignKey(d => d.ApplicationId).OnDelete(DeleteBehavior.Cascade);
 
         // The column default and the audit trigger own these (conventions.md § Audit columns); no created_by (ADR-D008).

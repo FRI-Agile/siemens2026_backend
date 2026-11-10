@@ -43,11 +43,11 @@ public class ChangeCaptureInterceptorTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         Harness h = Start();
         await using RecruitmentDbContext db = h.Db;
-        Application application = await OutboxSeed.ApplicationAsync(db, ct); // job post, candidate, application: untracked
+        Application application = await OutboxSeed.ApplicationAsync(db, ct); // job post and application: untracked
         Assert.Empty(await OutboxAsync(h, ct));
         Assert.Equal(0, h.Signal.Notified);
 
-        ApplicationDocument document = CandidateSeed.Document();
+        ApplicationDocument document = ApplicationSeed.Document();
         document.ApplicationId = application.Id;
         db.ApplicationDocuments.Add(document);
         using (EventScope.Begin("application_submitted"))
@@ -70,7 +70,7 @@ public class ChangeCaptureInterceptorTests
         Harness h = Start(Actor.ForUser(Staff));
         await using RecruitmentDbContext db = h.Db;
         Application application = await OutboxSeed.ApplicationAsync(db, ct);
-        ApplicationDocument document = CandidateSeed.Document();
+        ApplicationDocument document = ApplicationSeed.Document();
         document.ApplicationId = application.Id;
         db.ApplicationDocuments.Add(document);
         await db.SaveChangesAsync(ct);
@@ -97,7 +97,7 @@ public class ChangeCaptureInterceptorTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         Harness h = Start();
         await using RecruitmentDbContext db = h.Db;
-        ApplicationDocument orphan = CandidateSeed.Document();
+        ApplicationDocument orphan = ApplicationSeed.Document();
         orphan.ApplicationId = Guid.NewGuid(); // no such application: the foreign key refuses the insert
 
         db.ApplicationDocuments.Add(orphan);
@@ -119,7 +119,7 @@ public class ChangeCaptureInterceptorTests
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var rolledBack = await db.Database.BeginTransactionAsync(ct);
-            ApplicationDocument discarded = CandidateSeed.Document();
+            ApplicationDocument discarded = ApplicationSeed.Document();
             discarded.ApplicationId = application.Id;
             db.ApplicationDocuments.Add(discarded);
             await db.SaveChangesAsync(ct);
@@ -133,7 +133,7 @@ public class ChangeCaptureInterceptorTests
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var committed = await db.Database.BeginTransactionAsync(ct);
-            ApplicationDocument kept = CandidateSeed.Document();
+            ApplicationDocument kept = ApplicationSeed.Document();
             kept.ApplicationId = application.Id;
             db.ApplicationDocuments.Add(kept);
             await db.SaveChangesAsync(ct);

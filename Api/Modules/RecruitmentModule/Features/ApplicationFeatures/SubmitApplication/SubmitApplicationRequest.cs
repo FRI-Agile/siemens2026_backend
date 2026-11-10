@@ -16,8 +16,8 @@ public sealed record SubmitApplicationRequest
     public string LastName { get; init; } = string.Empty;
 
     /// <summary>
-    /// The applicant's e-mail, which identifies them: a later application with the same address, in any case, is linked
-    /// to the same candidate, whose stored name and phone it leaves unchanged.
+    /// The applicant's e-mail. A post takes one application per address, in any case; another post is a separate
+    /// application with its own details.
     /// </summary>
     /// <example>martin.kasuba@example.sk</example>
     public string Email { get; init; } = string.Empty;

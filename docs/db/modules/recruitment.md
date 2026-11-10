@@ -1,7 +1,7 @@
 # Recruitment
 
 **Service / owner:** `RecruitmentModule` (`Api/Modules/RecruitmentModule`)
-**Purpose:** the core of HealthyHires — job posts, the candidates who apply to them, their applications and the files
+**Purpose:** the core of HealthyHires — job posts, the applications to them (each carrying who applied) and the files
 submitted with them, and the HR workflow. Staff
 accounts are not stored here: they live in Microsoft Entra ID ([iam.md §2.4](../../architecture/iam.md#24-session-management)),
 and the module refers to them by their object id (`oid`).
@@ -11,8 +11,7 @@ and the module refers to them by their object id (`oid`).
 | Table | Purpose | Status |
 | ----- | ------- | ------ |
 | [`job_post`](#job_post) | A position the company is hiring for: a draft, published or closed | **Documented** |
-| [`candidate`](#candidate) | A person who applied to at least one job post, one per e-mail | **Documented** |
-| [`application`](#application) | A candidate's application to one job post, and where it is in the hiring pipeline | **Documented** |
+| [`application`](#application) | One person's application to one job post: who applied, and where it is in the hiring pipeline | **Documented** |
 | [`application_document`](#application_document) | A file submitted with an application (CV, cover letter, …): its type and its `files.file` | **Documented** |
 | [`outbox_message`](#outbox_message) | The module's transactional outbox | **Documented** |
 
@@ -131,68 +130,11 @@ change both together.
   would only serve a query written against the same expression. A term under 3 characters has no trigram to look up
   and still scans. `JobPostQueryExtensionsTests` pins the query to both indexes.
 
-## `candidate`
-
-> A person who applied to at least one job post. One row per e-mail address, whatever its case.
-
-**Audit:** standard, without `created_by` ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by)) · **Soft delete:** no
-
-**Columns**
-
-| Column | Type | Key | Null | Default | Description |
-| ------ | ---- | --- | ---- | ------- | ----------- |
-| `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID |
-| `first_name` | `TEXT` |  | NO |  | First name (*meno*) |
-| `last_name` | `TEXT` |  | NO |  | Last name (*priezvisko*) |
-| `display_name` | `TEXT` |  | NO | generated | `first_name \|\| ' ' \|\| last_name`, a stored generated column; the name search's column |
-| `email` | `TEXT` | UQ | NO |  | Contact e-mail; unique on `lower(email)` |
-| `phone_number` | `TEXT` |  | YES |  | Contact phone in E.164 (`+421905123456`); optional on the application form, which takes it in this form only |
-
-**Constraints**
-
-| Name | Type | Definition | Purpose |
-| ---- | ---- | ---------- | ------- |
-| `candidate_first_name_valid` | CHECK | `btrim(first_name) <> ''` | No blank first name |
-| `candidate_last_name_valid` | CHECK | `btrim(last_name) <> ''` | No blank last name |
-| `candidate_email_valid` | CHECK | `email ~ '^[^@\s]+@[^@\s]+$'` | One `@` between non-blank parts; the application validates further |
-| `candidate_phone_number_valid` | CHECK | `phone_number ~ '^\+[1-9][0-9]{6,14}$'` | E.164 only, when given |
-
-**Indexes**
-
-| Name | Columns | Type | Purpose |
-| ---- | ------- | ---- | ------- |
-| *(PK)* | `(id)` | btree | Lookup by id |
-| `uq_candidate_email` | `(lower(email))` | unique | One candidate per e-mail regardless of case; the lookup a new application makes |
-| `idx_candidate_display_name` | `(recruitment.immutable_unaccent(display_name) public.gin_trgm_ops)` | GIN trigram | The search on the name, ignoring case and accents |
-| `idx_candidate_email` | `(recruitment.immutable_unaccent(email) public.gin_trgm_ops)` | GIN trigram | The search on the e-mail, ignoring case and accents |
-
-**Triggers**
-
-| Name | Timing | Action |
-| ---- | ------ | ------ |
-| `trg_candidate_set_audit` | BEFORE UPDATE | `recruitment.set_audit_fields()`: sets `updated_at`, bumps `version` |
-
-**Notes**
-
-- **Identified by e-mail.** The first application carrying an e-mail creates the row; a later one with the same e-mail
-  (any case) is linked to it. Applicants are anonymous and nothing verifies the address, so a later application does
-  **not** change the stored name or phone — otherwise anyone could rewrite a candidate by applying with their e-mail.
-  Staff correct the details, hence `updated_by`. The lookup is `lower(email) = lower(@email)`, both sides lowered by
-  PostgreSQL as the unique index compares them; two first applications with one e-mail racing each other meet on the
-  index, and the loser links to the winner's row.
-- **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
-  never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
-  columns joined with `OR` would not.
-- **Search is accent-insensitive.** `CandidateQueryExtensions.MatchingSearch` compares
-  `immutable_unaccent(display_name)` and `immutable_unaccent(email)` with `ILIKE immutable_unaccent('%…%')`, so
-  "kasuba" finds "Kašuba". Each column has its own trigram index over exactly that expression, combined with a
-  `BitmapOr` ([search indexes](../conventions.md#search-indexes)); a query that drops the wrapper cannot use them.
-  `CandidateQueryExtensionsTests` pins the query to both. The same indexes serve the trigram similarity operators
-  (`%`, `<%`) should the search later rank fuzzy matches.
-
 ## `application`
 
-> A candidate's application (*žiadosť*) to one published job post, and where it stands in the hiring pipeline.
+> One person's application (*žiadosť*) to one published job post: who applied, as they filled in the form, and where it
+> stands in the hiring pipeline. Each job post has its own applicants; there is no shared candidate table
+> ([ADR-D010](../decision-log.md#adr-d010--applicants-belong-to-the-job-post-no-shared-candidate)).
 
 **Audit:** standard, without `created_by` ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by)) · **Soft delete:** no
 
@@ -202,7 +144,11 @@ change both together.
 | ------ | ---- | --- | ---- | ------- | ----------- |
 | `id` | `UUID` | PK | NO | `uuidv7()` | App-assigned v7 GUID |
 | `job_post_id` | `UUID` | FK, UQ | NO |  | The post applied to |
-| `candidate_id` | `UUID` | FK, UQ | NO |  | Who applied |
+| `first_name` | `TEXT` |  | NO |  | First name (*meno*) |
+| `last_name` | `TEXT` |  | NO |  | Last name (*priezvisko*) |
+| `display_name` | `TEXT` |  | NO | generated | `first_name \|\| ' ' \|\| last_name`, a stored generated column; the name search's column |
+| `email` | `TEXT` | UQ | NO |  | Contact e-mail; unique per post on `lower(email)` |
+| `phone_number` | `TEXT` |  | YES |  | Contact phone in E.164 (`+421905123456`); optional on the application form, which takes it in this form only |
 | `status` | `TEXT` |  | NO | `'nová žiadosť'` | Where the application is in the pipeline — see CHECK |
 
 **Value sets**
@@ -224,12 +170,15 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 | Column | References | On delete | Notes |
 | ------ | ---------- | --------- | ----- |
 | `job_post_id` | `recruitment.job_post(id)` | `RESTRICT` | Posts are closed, never deleted; applications must not lose their post |
-| `candidate_id` | `recruitment.candidate(id)` | `CASCADE` | An application means nothing without its candidate; erasing a candidate erases their applications |
 
 **Constraints**
 
 | Name | Type | Definition | Purpose |
 | ---- | ---- | ---------- | ------- |
+| `application_first_name_valid` | CHECK | `btrim(first_name) <> ''` | No blank first name |
+| `application_last_name_valid` | CHECK | `btrim(last_name) <> ''` | No blank last name |
+| `application_email_valid` | CHECK | `email ~ '^[^@\s]+@[^@\s]+$'` | One `@` between non-blank parts; the application validates further |
+| `application_phone_number_valid` | CHECK | `phone_number ~ '^\+[1-9][0-9]{6,14}$'` | E.164 only, when given |
 | `application_status_valid` | CHECK | `status IN ('nová žiadosť','predvýber','pohovor','ponuka','prijatý','odmietnutý')` | Guards the value set |
 
 **Indexes**
@@ -237,8 +186,9 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 | Name | Columns | Type | Purpose |
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id |
-| `uq_application_job_post_id_candidate_id` | `(job_post_id, candidate_id)` | unique | A candidate applies to a post once; leading with the post, also the job post detail's list of its applications |
-| `idx_application_candidate_id` | `(candidate_id)` | btree | A candidate's applications; the cascade from `candidate` |
+| `uq_application_job_post_id_email` | `(job_post_id, lower(email))` | unique | One application per e-mail and post, regardless of case; leading with the post, also the job post detail's list of its applications |
+| `idx_application_display_name` | `(recruitment.immutable_unaccent(display_name) public.gin_trgm_ops)` | GIN trigram | The search on the name, ignoring case and accents |
+| `idx_application_email` | `(recruitment.immutable_unaccent(email) public.gin_trgm_ops)` | GIN trigram | The search on the e-mail, ignoring case and accents |
 
 **Triggers**
 
@@ -248,24 +198,35 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 
 **Notes**
 
+- **The applicant belongs to the post.** The row carries the name, e-mail and phone exactly as typed on that post's
+  form. Someone applying to two posts is two unrelated rows, each with its own details and status; nothing links them,
+  because no screen shows a person across posts ([ADR-D010](../decision-log.md#adr-d010--applicants-belong-to-the-job-post-no-shared-candidate)).
+  Staff correct the details on the row, hence `updated_by`.
 - **Only published posts take applications.** The submitting command (`SubmitApplication`) checks
   `job_post.status = 'published'`; a CHECK cannot look at another row. A draft answers `404`, as it is invisible to
   applicants, and a closed post `409`. Closing a post later leaves its applications as they are.
-- **Applying twice to one post is refused, not merged.** The second application with the same e-mail (any case) is
-  answered `409` and changes nothing: the applicant is anonymous, so replacing the first application's documents would
-  let anyone who knows the e-mail overwrite it. A retry of the *same* submission carries the same `Idempotency-Key` and
-  gets the first response replayed instead. Two submissions racing each other meet on
-  `uq_application_job_post_id_candidate_id`, and the loser is answered the same `409`.
+- **Applying twice to one post is refused, not merged.** A second application with the same e-mail (any case) to the
+  same post is answered `409` and changes nothing: the applicant is anonymous, so replacing the first application's
+  details or documents would let anyone who knows the e-mail overwrite it. A retry of the *same* submission carries the
+  same `Idempotency-Key` and gets the first response replayed instead. Two submissions racing each other meet on
+  `uq_application_job_post_id_email`, and the loser is answered the same `409`.
 - **Status moves `nová žiadosť → predvýber → pohovor → ponuka → prijatý`, and `odmietnutý` from any step before
-  `prijatý`.** Staff
-  move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
+  `prijatý`.** Staff move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
   application enforces the moves; the table only guards the value set.
-- **The job post detail lists its applications.** It reads `application` by `job_post_id` joined to `candidate` for
-  the first name, last name and e-mail, and shows `status`; the position column is the post's own title.
+- **The job post detail lists its applications** — first name, last name, e-mail and status — by `job_post_id`, with
+  no join; the position column is the post's own title.
+- **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
+  never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
+  columns joined with `OR` would not.
+- **Search is accent-insensitive.** `ApplicationQueryExtensions.MatchingSearch` compares
+  `immutable_unaccent(display_name)` and `immutable_unaccent(email)` with `ILIKE immutable_unaccent('%…%')`, so
+  "kasuba" finds "Kašuba". Each column has its own trigram index over exactly that expression, combined with a
+  `BitmapOr` ([search indexes](../conventions.md#search-indexes)); a query that drops the wrapper cannot use them.
+  `ApplicationQueryExtensionsTests` pins the query to both.
 
 ## `application_document`
 
-> A file the candidate submitted with an application — a CV, a cover letter or anything else: what it is, and which file
+> A file the applicant submitted with an application — a CV, a cover letter or anything else: what it is, and which file
 > it is. The file itself (name, type, size, bytes, malware scan) is the Files module's
 > [`files.file`](files.md), referenced by `file_id`.
 
@@ -336,8 +297,8 @@ copy is `ApplicationDocumentTypes` in `RecruitmentVocabulary.cs`; change both to
 - **Each application references its own upload.** Re-sending a file id already attached to another application is
   refused with `400` on that field (`uq_application_document_file_id`): the client uploads the file again.
 - **Staff see clean files only:** a file is downloadable once ClamAV cleared it, which the download endpoint checks.
-- **Deletes the outbox cannot see.** Deleting an `application` or a `candidate` cascades to these rows in the database.
-  That feature reads the rows' `file_id`s first and publishes `files_released` in the same transaction.
+- **Deletes the outbox cannot see.** Deleting an `application` cascades to these rows in the database. That feature
+  reads the rows' `file_id`s first and publishes `files_released` in the same transaction.
 
 ## `outbox_message`
 

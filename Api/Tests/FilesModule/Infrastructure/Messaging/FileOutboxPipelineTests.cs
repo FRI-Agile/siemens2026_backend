@@ -79,7 +79,7 @@ public class FileOutboxPipelineTests
         Application application = await OutboxSeed.ApplicationAsync(db, ct);
         StoredFile file = await UploadedAsync(h, ct);
 
-        ApplicationDocument document = CandidateSeed.Document();
+        ApplicationDocument document = ApplicationSeed.Document();
         document.ApplicationId = application.Id;
         document.FileId = file.Id;
         db.ApplicationDocuments.Add(document);
@@ -111,7 +111,7 @@ public class FileOutboxPipelineTests
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            ApplicationDocument document = CandidateSeed.Document();
+            ApplicationDocument document = ApplicationSeed.Document();
             document.ApplicationId = application.Id;
             document.FileId = file.Id;
             db.ApplicationDocuments.Add(document);
@@ -131,7 +131,7 @@ public class FileOutboxPipelineTests
         await using RecruitmentDbContext db = h.Recruitment;
         Application application = await OutboxSeed.ApplicationAsync(db, ct);
         StoredFile file = await UploadedAsync(h, ct);
-        ApplicationDocument document = CandidateSeed.Document();
+        ApplicationDocument document = ApplicationSeed.Document();
         document.ApplicationId = application.Id;
         document.FileId = file.Id;
         db.ApplicationDocuments.Add(document);

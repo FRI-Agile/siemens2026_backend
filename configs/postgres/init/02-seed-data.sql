@@ -135,33 +135,23 @@ Výhodou je angličtina na komunikatívnej úrovni.',
      '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', now() - interval '1 hour');
 
 -- ---------------------------------------------------------------------------
--- recruitment.candidate, recruitment.application
--- 7 candidates. Six applied to 'Elektrotechnik údržby', one in each application status, so the staff job post detail
--- shows the whole pipeline; two of them applied to 'Vývojár softvéru (.NET)' as well. Names carry accents so the
--- accent-insensitive search has something to find ("kasuba", "stefanik"). No application_document rows: their files
--- would have to exist in files.file and in the local Azurite container, and staff only see scanned files anyway.
+-- recruitment.application
+-- Six people applied to 'Elektrotechnik údržby', one in each application status, so the staff job post detail shows the
+-- whole pipeline; two applied to 'Vývojár softvéru (.NET)', one of them (Martin Kašuba) the same person as above, which
+-- is simply another row (ADR-D010). Names carry accents so the accent-insensitive search has something to find
+-- ("kasuba", "stefanik"). No application_document rows: their files would have to exist in files.file and in the local
+-- Azurite container, and staff only see scanned files anyway.
 -- ---------------------------------------------------------------------------
-INSERT INTO recruitment.candidate (first_name, last_name, email, phone_number, created_at)
-VALUES
-    ('Martin',  'Kašuba',     'kasuba7@stud.uniza.sk',      '+421905123456', now() - interval '20 hours'),
-    ('Zuzana',  'Štefániková', 'zuzana.stefanikova@gmail.com', '+421911222333', now() - interval '19 hours'),
-    ('Peter',   'Hudák',      'peter.hudak@azet.sk',        '+421902444555', now() - interval '18 hours'),
-    ('Lucia',   'Ďurišová',   'lucia.durisova@centrum.sk',  '+421948666777', now() - interval '17 hours'),
-    ('Tomáš',   'Grešák',     'tomas.gresak@post.sk',       '+421907888999', now() - interval '16 hours'),
-    ('Katarína', 'Poláková',  'k.polakova@gmail.com',       '+421915101202', now() - interval '15 hours'),
-    ('Ján',     'Mikloš',     'jan.miklos@outlook.com',     '+420602303404', now() - interval '14 hours');
-
-INSERT INTO recruitment.application (job_post_id, candidate_id, status, created_at)
-SELECT p.id, c.id, a.status, a.created_at
+INSERT INTO recruitment.application (job_post_id, first_name, last_name, email, phone_number, status, created_at)
+SELECT p.id, a.first_name, a.last_name, a.email, a.phone_number, a.status, a.created_at
 FROM (VALUES
-        ('Elektrotechnik údržby',   'kasuba7@stud.uniza.sk',        'nová žiadosť', now() - interval '20 hours'),
-        ('Elektrotechnik údržby',   'zuzana.stefanikova@gmail.com', 'predvýber',    now() - interval '19 hours'),
-        ('Elektrotechnik údržby',   'peter.hudak@azet.sk',          'pohovor',      now() - interval '18 hours'),
-        ('Elektrotechnik údržby',   'lucia.durisova@centrum.sk',    'ponuka',       now() - interval '17 hours'),
-        ('Elektrotechnik údržby',   'tomas.gresak@post.sk',         'prijatý',      now() - interval '16 hours'),
-        ('Elektrotechnik údržby',   'k.polakova@gmail.com',         'odmietnutý',   now() - interval '15 hours'),
-        ('Vývojár softvéru (.NET)', 'kasuba7@stud.uniza.sk',        'predvýber',    now() - interval '13 hours'),
-        ('Vývojár softvéru (.NET)', 'jan.miklos@outlook.com',       'nová žiadosť', now() - interval '14 hours')
-     ) AS a (title, email, status, created_at)
-JOIN recruitment.job_post p ON p.title = a.title
-JOIN recruitment.candidate c ON lower(c.email) = a.email;
+        ('Elektrotechnik údržby',   'Martin',   'Kašuba',      'kasuba7@stud.uniza.sk',        '+421905123456', 'nová žiadosť', now() - interval '20 hours'),
+        ('Elektrotechnik údržby',   'Zuzana',   'Štefániková', 'zuzana.stefanikova@gmail.com', '+421911222333', 'predvýber',    now() - interval '19 hours'),
+        ('Elektrotechnik údržby',   'Peter',    'Hudák',       'peter.hudak@azet.sk',          '+421902444555', 'pohovor',      now() - interval '18 hours'),
+        ('Elektrotechnik údržby',   'Lucia',    'Ďurišová',    'lucia.durisova@centrum.sk',    '+421948666777', 'ponuka',       now() - interval '17 hours'),
+        ('Elektrotechnik údržby',   'Tomáš',    'Grešák',      'tomas.gresak@post.sk',         '+421907888999', 'prijatý',      now() - interval '16 hours'),
+        ('Elektrotechnik údržby',   'Katarína', 'Poláková',    'k.polakova@gmail.com',         NULL,            'odmietnutý',   now() - interval '15 hours'),
+        ('Vývojár softvéru (.NET)', 'Martin',   'Kašuba',      'kasuba7@stud.uniza.sk',        '+421905123456', 'predvýber',    now() - interval '13 hours'),
+        ('Vývojár softvéru (.NET)', 'Ján',      'Mikloš',      'jan.miklos@outlook.com',       '+420602303404', 'nová žiadosť', now() - interval '14 hours')
+     ) AS a (title, first_name, last_name, email, phone_number, status, created_at)
+JOIN recruitment.job_post p ON p.title = a.title;

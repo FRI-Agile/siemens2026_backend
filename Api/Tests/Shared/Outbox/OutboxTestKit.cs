@@ -48,8 +48,7 @@ internal static class OutboxSeed
     {
         JobPost post = JobPostSeed.Post("Elektrotechnik údržby");
         await JobPostSeed.AddAsync(db, ct, post);
-        Application application = CandidateSeed.Application(
-            post, CandidateSeed.Candidate("Martin", "Kašuba", $"kasuba{Guid.NewGuid():N}@example.com"));
+        Application application = ApplicationSeed.Application(post, email: $"kasuba{Guid.NewGuid():N}@example.com");
         db.Applications.Add(application);
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();

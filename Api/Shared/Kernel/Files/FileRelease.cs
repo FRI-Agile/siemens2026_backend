@@ -15,7 +15,7 @@ public static class FileRelease
     /// <summary>Stages a <see cref="EventName"/> event on <paramref name="outbox"/>, committed by its next save.</summary>
     /// <param name="outbox">The producing module's context.</param>
     /// <param name="module">The producing module's name.</param>
-    /// <param name="entityType">What was deleted, e.g. <c>candidate</c>.</param>
+    /// <param name="entityType">What was deleted, e.g. <c>application</c>.</param>
     /// <param name="entityId">Which one.</param>
     /// <param name="fileIds">Every file the deleted rows referenced; read them before the delete.</param>
     public static void PublishFilesReleased(

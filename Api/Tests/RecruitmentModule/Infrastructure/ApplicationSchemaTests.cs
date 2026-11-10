@@ -8,28 +8,33 @@ using Tests.Shared;
 
 namespace Tests.RecruitmentModule.Infrastructure;
 
-/// <summary>The candidate, application and document tables keep what the model promises, mapped through EF Core.</summary>
+/// <summary>The application and document tables keep what the model promises, mapped through EF Core.</summary>
 public class ApplicationSchemaTests
 {
+    private static async Task<JobPost> SeedPostAsync(RecruitmentDbContext db, CancellationToken ct, string title = "Product Owner")
+    {
+        JobPost post = JobPostSeed.Post(title);
+        await JobPostSeed.AddAsync(db, ct, post);
+        return post;
+    }
+
     [Fact]
-    public async Task An_application_is_stored_with_its_candidate_and_documents_and_starts_new()
+    public async Task An_application_is_stored_with_its_applicant_and_documents_and_starts_new()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        Application application = CandidateSeed.Application(post, CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk"));
+        JobPost post = await SeedPostAsync(db, ct);
+        Application application = ApplicationSeed.Application(post);
         application.Documents.AddRange(
-            CandidateSeed.Document(ApplicationDocumentTypes.Cv), CandidateSeed.Document(ApplicationDocumentTypes.CoverLetter));
+            ApplicationSeed.Document(ApplicationDocumentTypes.Cv), ApplicationSeed.Document(ApplicationDocumentTypes.CoverLetter));
         db.Applications.Add(application);
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
 
-        Application stored = await db.Applications.Include(a => a.Candidate).Include(a => a.Documents)
-            .SingleAsync(a => a.JobPostId == post.Id, ct);
+        Application stored = await db.Applications.Include(a => a.Documents).SingleAsync(a => a.JobPostId == post.Id, ct);
 
         Assert.Equal(ApplicationStatuses.New, stored.Status);
-        Assert.Equal("Martin Kašuba", stored.Candidate!.DisplayName);
+        Assert.Equal(("Martin Kašuba", "kasuba7@stud.uniza.sk"), (stored.DisplayName, stored.Email));
         Assert.Equal(2, stored.Documents.Count);
     }
 
@@ -38,43 +43,47 @@ public class ApplicationSchemaTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        Candidate candidate = CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk");
-        db.Candidates.Add(candidate);
+        Application application = ApplicationSeed.Application(await SeedPostAsync(db, ct));
+        db.Applications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        candidate.LastName = "Kašubová";
+        application.LastName = "Kašubová";
         await db.SaveChangesAsync(ct);
 
-        Assert.Equal("Martin Kašubová", candidate.DisplayName);
+        Assert.Equal("Martin Kašubová", application.DisplayName);
     }
 
     [Fact]
-    public async Task An_email_belongs_to_one_candidate_whatever_its_case()
+    public async Task A_post_takes_one_application_per_email_whatever_its_case()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        db.Candidates.Add(CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk"));
+        JobPost post = await SeedPostAsync(db, ct);
+        db.Applications.Add(ApplicationSeed.Application(post, email: "kasuba7@stud.uniza.sk"));
         await db.SaveChangesAsync(ct);
 
-        db.Candidates.Add(CandidateSeed.Candidate("Martin", "Kašuba", "KASUBA7@stud.uniza.sk"));
+        db.Applications.Add(ApplicationSeed.Application(post, email: "KASUBA7@stud.uniza.sk"));
 
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(ct));
+        DbUpdateException e = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(ct));
+        Assert.Equal("uq_application_job_post_id_email", Assert.IsType<PostgresException>(e.InnerException).ConstraintName);
     }
 
     [Fact]
-    public async Task A_candidate_applies_to_a_post_once()
+    public async Task The_same_person_applies_to_two_posts_as_two_unrelated_applications()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        Candidate candidate = CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk");
-        db.Applications.Add(CandidateSeed.Application(post, candidate));
+        JobPost first = await SeedPostAsync(db, ct);
+        JobPost second = await SeedPostAsync(db, ct, "Scrum Master");
+        db.Applications.AddRange(
+            ApplicationSeed.Application(first, "Martin", "Kašuba"),
+            ApplicationSeed.Application(second, "Martin", "Kašuba-Nový"));
+
         await db.SaveChangesAsync(ct);
 
-        db.Applications.Add(new Application { Id = Guid.CreateVersion7(), JobPostId = post.Id, CandidateId = candidate.Id });
-
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(ct));
+        db.ChangeTracker.Clear();
+        Assert.Equal(["Martin Kašuba", "Martin Kašuba-Nový"],
+            await db.Applications.Select(a => a.DisplayName).OrderBy(n => n).ToListAsync(ct));
     }
 
     [Theory]
@@ -84,14 +93,12 @@ public class ApplicationSchemaTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        Application application = CandidateSeed.Application(post, CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk"));
-        application.Documents.Add(CandidateSeed.Document(type));
+        Application application = ApplicationSeed.Application(await SeedPostAsync(db, ct));
+        application.Documents.Add(ApplicationSeed.Document(type));
         db.Applications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        application.Documents.Add(CandidateSeed.Document(type));
+        application.Documents.Add(ApplicationSeed.Document(type));
 
         DbUpdateException e = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(ct));
         Assert.Equal("uq_application_document_application_id_type", Assert.IsType<PostgresException>(e.InnerException).ConstraintName);
@@ -102,11 +109,9 @@ public class ApplicationSchemaTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        Application application = CandidateSeed.Application(post, CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk"));
+        Application application = ApplicationSeed.Application(await SeedPostAsync(db, ct));
         application.Documents.AddRange(
-            CandidateSeed.Document(ApplicationDocumentTypes.Other), CandidateSeed.Document(ApplicationDocumentTypes.Other));
+            ApplicationSeed.Document(ApplicationDocumentTypes.Other), ApplicationSeed.Document(ApplicationDocumentTypes.Other));
         db.Applications.Add(application);
 
         await db.SaveChangesAsync(ct);
@@ -115,18 +120,18 @@ public class ApplicationSchemaTests
     }
 
     [Fact]
-    public async Task A_candidate_without_a_phone_is_stored()
+    public async Task An_application_without_a_phone_is_stored()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        Candidate candidate = CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk");
-        candidate.PhoneNumber = null;
-        db.Candidates.Add(candidate);
+        Application application = ApplicationSeed.Application(await SeedPostAsync(db, ct));
+        application.PhoneNumber = null;
+        db.Applications.Add(application);
 
         await db.SaveChangesAsync(ct);
 
         db.ChangeTracker.Clear();
-        Assert.Null((await db.Candidates.SingleAsync(ct)).PhoneNumber);
+        Assert.Null((await db.Applications.SingleAsync(ct)).PhoneNumber);
     }
 
     [Fact]
@@ -134,9 +139,8 @@ public class ApplicationSchemaTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        db.Applications.Add(CandidateSeed.Application(post, CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk")));
+        JobPost post = await SeedPostAsync(db, ct);
+        db.Applications.Add(ApplicationSeed.Application(post));
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
 
@@ -145,21 +149,17 @@ public class ApplicationSchemaTests
     }
 
     [Fact]
-    public async Task Erasing_a_candidate_erases_their_applications_and_documents()
+    public async Task Deleting_an_application_deletes_its_documents()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        JobPost post = JobPostSeed.Post("Product Owner");
-        await JobPostSeed.AddAsync(db, ct, post);
-        Candidate candidate = CandidateSeed.Candidate("Martin", "Kašuba", "kasuba7@stud.uniza.sk");
-        Application application = CandidateSeed.Application(post, candidate);
-        application.Documents.Add(CandidateSeed.Document());
+        Application application = ApplicationSeed.Application(await SeedPostAsync(db, ct));
+        application.Documents.Add(ApplicationSeed.Document());
         db.Applications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        await db.Candidates.Where(c => c.Id == candidate.Id).ExecuteDeleteAsync(ct);
+        await db.Applications.Where(a => a.Id == application.Id).ExecuteDeleteAsync(ct);
 
-        Assert.False(await db.Applications.AnyAsync(ct));
         Assert.False(await db.ApplicationDocuments.AnyAsync(ct));
     }
 }
