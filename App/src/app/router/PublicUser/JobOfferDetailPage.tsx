@@ -1,6 +1,6 @@
 import { Button, makeStyles } from '@fluentui/react-components'
 import { ArrowLeftRegular } from '@fluentui/react-icons'
-import { Link, useLocation, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { usePublishedJobPost } from '../../../features/recruitment/publicJobPosts.ts'
 import {
   employmentTypeLabels,
@@ -11,21 +11,21 @@ import { problemMessage } from '../../../shared/api/problem.ts'
 
 const useStyles = makeStyles({
   main: {
-    // index.css centres every <main>'s children (`display: grid; place-items: center`), and browsers now apply
-    // justify-items to block layout too, so both are reset: this page is a left-aligned column.
-    display: 'block',
-    justifyItems: 'stretch',
-    maxWidth: '900px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
     width: '100%',
     boxSizing: 'border-box',
-    margin: '0 auto',
     padding: '64px 32px 88px',
   },
   back: {
+    width: 'min(100%, 900px)',
     marginBottom: '32px',
     color: '#475569',
   },
   card: {
+    width: 'min(100%, 900px)',
+    boxSizing: 'border-box',
     padding: '40px',
     border: '1px solid #E5E7EB',
     borderRadius: '12px',
@@ -94,14 +94,11 @@ const useStyles = makeStyles({
 export function JobOfferDetailPage() {
   const styles = useStyles()
   const navigate = useNavigate()
-  const location = useLocation()
   const { offerId = '' } = useParams()
   const { data: offer, error } = usePublishedJobPost(offerId)
 
-  // Back to the list as it was left (page, filter) when the visitor came from it; otherwise to its first page.
   function back() {
-    if (location.key !== 'default') void navigate(-1)
-    else void navigate('/aktualne-pozicie')
+    void navigate('/aktualne-pozicie')
   }
 
   if (!offer) {
@@ -158,7 +155,12 @@ export function JobOfferDetailPage() {
             <strong>Počet otvorených miest:</strong> {offer.openPositions}
           </div>
         </div>
-        <Button appearance="primary">Mám záujem o túto pozíciu</Button>
+        <Button
+          appearance="primary"
+          onClick={() => void navigate(`/aktualne-pozicie/${offer.id}/ziadost`)}
+        >
+          Mám záujem o túto pozíciu
+        </Button>
       </article>
     </main>
   )

@@ -5,6 +5,7 @@ import { NotFoundPage } from './Error/NotFoundPage.tsx'
 import { HomePage } from './PublicUser/HomePage.tsx'
 import { LoginPage } from './PublicUser/LoginPage.tsx'
 import { JobOfferDetailPage } from './PublicUser/JobOfferDetailPage.tsx'
+import { JobApplicationPage } from './PublicUser/JobApplicationPage.tsx'
 import { JobOffersPage } from './PublicUser/JobOffersPage.tsx'
 
 // Two route trees (ADR-F004). Everything under /staff is lazy: applicants never download staff code or MSAL.
@@ -23,6 +24,11 @@ export const router = createBrowserRouter([
     path: '/aktualne-pozicie/:offerId',
     Component: PublicLayout,
     children: [{ index: true, Component: JobOfferDetailPage }],
+  },
+  {
+    path: '/aktualne-pozicie/:offerId/ziadost',
+    Component: PublicLayout,
+    children: [{ index: true, Component: JobApplicationPage }],
   },
   { path: '/login', Component: LoginPage },
   { path: '/access-denied', Component: AccessDeniedPage },
