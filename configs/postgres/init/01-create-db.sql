@@ -78,6 +78,19 @@ CREATE INDEX idx_idempotency_expires_at ON kernel.idempotency (expires_at);
 -- The default 20% dead-tuple threshold lets a churn table like this bloat between passes.
 ALTER TABLE kernel.idempotency SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
 
+-- altcha_solution  (spent ALTCHA proof-of-work solutions, ADR-022)
+-- One row per challenge whose solution was accepted, kept until the challenge expires, so a solution is accepted only
+-- once. A schema of its own for the same reason as `idempotency`: the check is a host endpoint filter, not a module's.
+-- `challenge` is the SHA-256 the signature covers, so moving digits between the salt and the number cannot spend the
+-- same challenge twice under a different row. Insert-only churn, deleted by `AltchaSolutionPruner` past `expires_at`.
+CREATE TABLE kernel.altcha_solution (
+    challenge   TEXT         PRIMARY KEY,  -- hex SHA-256 of salt || number
+    expires_at  TIMESTAMPTZ  NOT NULL,     -- the challenge's own expiry; the row may be pruned after it
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_altcha_solution_expires_at ON kernel.altcha_solution (expires_at);
+ALTER TABLE kernel.altcha_solution SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);
+
 
 -- ===========================================================================
 --  MODULE: files
@@ -217,7 +230,7 @@ CREATE TABLE recruitment.candidate (
     last_name     TEXT         NOT NULL,
     display_name  TEXT         NOT NULL GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED,
     email         TEXT         NOT NULL,
-    phone_number  TEXT         NOT NULL,  -- E.164
+    phone_number  TEXT,                   -- E.164; optional on the application form
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ,
     updated_by    UUID,
@@ -300,6 +313,11 @@ CREATE TABLE recruitment.application_document (
 CREATE INDEX idx_application_document_application_id ON recruitment.application_document (application_id);
 -- A file belongs to one reference: two rows naming it would have the first one's release delete it under the second.
 CREATE UNIQUE INDEX uq_application_document_file_id ON recruitment.application_document (file_id);
+-- At most one CV and one cover letter per application, so "the application's CV" names one row: the staff detail and the
+-- AI scoring read it by (application_id, type). Any number of other documents.
+CREATE UNIQUE INDEX uq_application_document_application_id_type
+    ON recruitment.application_document (application_id, type)
+    WHERE type IN ('životopis', 'motivačný list');
 CREATE TRIGGER trg_application_document_set_audit
     BEFORE UPDATE ON recruitment.application_document
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();
