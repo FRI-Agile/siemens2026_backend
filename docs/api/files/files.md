@@ -469,7 +469,7 @@ One implementation, `AzureBlobFileStorage`, runs everywhere. Only the account be
 
 **Numbers:** upload URL **10 min** (create-only), download URL **5 min**, pending grace **5 min**, pending files reaped
 after **1 day**, scan every **30 s**, janitor **hourly**, released files kept **7 days**, `application_document`
-**10 MB** of PDF, DOC, DOCX or ODT.
+**10 MB** of PDF, DOC, DOCX, JPEG or PNG.
 
 **Rules of thumb:**
 
