@@ -87,8 +87,26 @@ deploy() {
     az deployment sub create --name "$deployment" --location "$HH_LOCATION" \
         --template-file "$root/infra/main.bicep" --parameters "$root/infra/main.bicepparam" \
         --query 'properties.outputs.{app: appHost.value, vm: vmName.value, postgres: postgresHost.value, keyVault: keyVaultUri.value}' -o table
+    altcha_key
     budget
     log "Done. Next: scripts/azure/enrol-netbird.sh"
+}
+
+# ALTCHA's HMAC signing key (ADR-022). Bicep cannot create it without putting a fresh value in every deployment, so it is
+# generated here once, and its only copy stays in Key Vault. The VM reads it per secret, like the Collector's (iam.md
+# §4.2); the assignment is renewed on every run, because a rebuilt VM has a new identity.
+altcha_key() {
+    need openssl
+    local vault name=altcha-hmac-key
+    vault=$(output keyVaultName)
+    if ! az keyvault secret show --vault-name "$vault" --name "$name" --query id -o none 2> /dev/null; then
+        log "Generating the ALTCHA signing key in Key Vault $vault"
+        az keyvault secret set --vault-name "$vault" --name "$name" \
+            --file <(openssl rand -base64 32 | tr -d '\n') --output none
+    fi
+    az role assignment create --assignee-object-id "$(output vmPrincipalId)" --assignee-principal-type ServicePrincipal \
+        --role 'Key Vault Secrets User' --scope "$(az keyvault show --name "$vault" --query id -o tsv)/secrets/$name" \
+        --output none
 }
 
 # The budget is its own deployment, so an offer without Cost Management budgets does not fail the rest.

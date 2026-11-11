@@ -101,7 +101,7 @@ The commands are in the [Azure deployment guide](../operations/azure-deployment-
 1. **Resources:** `provision.sh check`, then `deploy` (§3.3). This also assigns the location policy. The VM boots and cloud-init runs.
 2. **NetBird:** generate a single-use setup key with a short expiry in the NetBird dashboard and enrol the VM through Azure Run Command (`scripts/azure/enrol-netbird.sh`). The key is never placed in Bicep or cloud-init, where it would stay readable in the VM's provisioning data.
 3. **GitHub:** `provision.sh github` copies the deployment's outputs, the VM's NetBird address and SSH host key, and the deploy key into the GitHub environment.
-4. **Secrets:** Bicep stores the Application Insights connection string itself; any other Key Vault secret value is set with `az keyvault secret set`.
+4. **Secrets:** Bicep stores the Application Insights connection string itself, and `provision.sh deploy` generates the ALTCHA signing key once; any other Key Vault secret value is set with `az keyvault secret set`.
 5. **Break-glass:** `provision.sh breakglass` sets a random Serial Console password for the `breakglass` user; the plaintext goes only to Key Vault.
 6. **Database role and Graph permissions:** `scripts/azure/db-grant-identity.sh`, as the server's Entra admin: a NOLOGIN role `healthyhires_app` owns the schemas, and the managed identity's login role is a member of it. Then `scripts/azure/graph-grant-identity.sh`, as a Privileged Role Administrator, for creating staff accounts ([iam.md §4.2](iam.md#42-role-assignments)).
 7. **First deploy:** run the CI deploy workflow ([container-deployment.md §3.3](container-deployment.md#33-deployment-and-rollback)).

@@ -153,7 +153,7 @@ A managed identity exists only in the tenant of its Azure subscription and gets 
 
 | Item | Type | Stored in | Used by | Notes |
 | ---- | ---- | --------- | ------- | ----- |
-| ALTCHA signing key | Secret | Key Vault | API | Signs and verifies proof-of-work challenges ([ADR-022](ADR.md#adr-022-bot-protection--altcha-on-the-application-form)) |
+| ALTCHA signing key | Secret | Key Vault only, as `altcha-hmac-key` | API | Signs and verifies proof-of-work challenges ([ADR-022](ADR.md#adr-022-bot-protection--altcha-on-the-application-form)). Generated once by `provision.sh deploy`, which also gives the VM read access to this one secret; read at every API start by `hh-podman-secret` |
 | Azure Monitor connection string | Secret | Key Vault, written by Bicep | Collector | Read at every Collector start by `hh-podman-secret` and passed as a Podman secret; removable if the Collector gains Entra authentication (§9) |
 | Azure OpenAI API key | — | Does not exist | — | Key access is disabled on the resource; only Entra tokens are accepted |
 | PostgreSQL admin password | — | Does not exist | — | Password authentication is disabled; the operator and the API both sign in with Entra tokens |

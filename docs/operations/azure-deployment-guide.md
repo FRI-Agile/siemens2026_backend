@@ -177,7 +177,7 @@ Read the list: on a new subscription everything is a *Create*. Then:
 just azure-deploy
 ```
 
-It takes 10–15 minutes and prints the app hostname, VM name, PostgreSQL host and Key Vault URI. Azure OpenAI is created in Sweden Central even though everything else is in Germany West Central: it is the only allowed region where the student subscription has quota for a Standard deployment. Without `just`, the same commands are `scripts/azure/provision.sh check|what-if|deploy`.
+It takes 10–15 minutes and prints the app hostname, VM name, PostgreSQL host and Key Vault URI. It also generates the ALTCHA signing key in Key Vault the first time, and lets the VM read it. Azure OpenAI is created in Sweden Central even though everything else is in Germany West Central: it is the only allowed region where the student subscription has quota for a Standard deployment. Without `just`, the same commands are `scripts/azure/provision.sh check|what-if|deploy`.
 
 From this point Azure Monitor e-mails availability alerts, because nothing answers on the hostname yet. They stop after §8.
 

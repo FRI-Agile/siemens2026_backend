@@ -213,7 +213,12 @@ runcmd:
   # The rootless pod starts at boot without anyone logging in; its Podman socket feeds podman_stats.
   - loginctl enable-linger healthyhires
   - systemctl start "user@$(id -u healthyhires).service"
-  - systemctl --user -M healthyhires@ enable --now podman.socket
+  # Enabled by its symlink, not `systemctl --user -M healthyhires@ enable`: right after the user manager's first start,
+  # its bus can still reset the connection, and the enable is then silently lost. The manager starts the socket at
+  # every boot from the symlink; the retried start covers this one.
+  - install -d -o healthyhires -g healthyhires ~healthyhires/.config ~healthyhires/.config/systemd ~healthyhires/.config/systemd/user ~healthyhires/.config/systemd/user/sockets.target.wants
+  - ln -sf /usr/lib/systemd/user/podman.socket ~healthyhires/.config/systemd/user/sockets.target.wants/podman.socket
+  - for i in 1 2 3 4 5; do systemctl --user -M healthyhires@ start podman.socket && break; sleep 3; done
 
   - netbird service install
   - netbird service start
