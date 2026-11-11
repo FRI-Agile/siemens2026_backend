@@ -29,9 +29,6 @@ jobs:
       caddy-image: ${{ steps.push.outputs.caddy }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.SUBMODULES_TOKEN }} # App and Api are private submodules
 
       - uses: actions/setup-dotnet@v4
         with:
