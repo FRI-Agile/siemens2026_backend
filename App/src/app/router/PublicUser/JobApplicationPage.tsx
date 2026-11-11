@@ -8,6 +8,8 @@ import {
 import { ArrowLeftRegular, DocumentAddRegular } from '@fluentui/react-icons'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
+import { ApiError, request } from '../../../shared/api/http.ts'
+import { useCommand } from '../../../shared/api/useCommand.ts'
 
 const useStyles = makeStyles({
   main: {
@@ -106,6 +108,11 @@ const useStyles = makeStyles({
     gap: '12px',
     marginTop: '24px',
   },
+  submitError: {
+    color: '#B3261E',
+    margin: 0,
+    textAlign: 'center',
+  },
   '@media (max-width: 700px)': {
     main: {
       padding: '40px 24px 64px',
@@ -119,6 +126,38 @@ const useStyles = makeStyles({
   },
 })
 
+interface UploadIntent {
+  fileId: string
+  uploadUrl: string
+  uploadHeaders: Record<string, string>
+  expiresAt: string
+}
+
+interface AltchaChallenge {
+  algorithm: string
+  challenge: string
+  maxnumber: number
+  salt: string
+  signature: string
+}
+
+interface SubmitApplicationBody {
+  firstName: string
+  lastName: string
+  email: string
+  phoneNumber: string | null
+  cvFileId: string
+  coverLetterFileId: string | null
+  otherFileIds: string[]
+}
+
+interface SubmitApplicationResponse {
+  id: string
+  jobPostId: string
+  status: string
+  createdAt: string
+}
+
 export function JobApplicationPage() {
   const styles = useStyles()
   const navigate = useNavigate()
@@ -126,6 +165,8 @@ export function JobApplicationPage() {
   const [files, setFiles] = useState<Record<string, File[]>>({})
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const acceptedFileTypes = '.doc,.docx,.pdf,.jpg,.jpeg,.png'
   const maxDocumentBytes = 10 * 1024 * 1024
   const contentTypes: Record<string, string> = {
@@ -136,6 +177,27 @@ export function JobApplicationPage() {
     jpeg: 'image/jpeg',
     png: 'image/png',
   }
+  const submitApplication = useCommand(
+    async (
+      variables: {
+        body: SubmitApplicationBody
+        altcha: string
+      },
+      idempotencyKey,
+    ) =>
+      request<SubmitApplicationResponse>(
+        `/api/v1/recruitment/job-posts/${encodeURIComponent(offerId)}/applications`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Altcha': variables.altcha,
+          },
+          body: JSON.stringify(variables.body),
+          idempotencyKey,
+        },
+      ),
+  )
 
   function documentContentType(file: File) {
     const allowedTypes = new Set(Object.values(contentTypes))
@@ -226,13 +288,116 @@ export function JobApplicationPage() {
       nextErrors.phoneNumber =
         'Telefón zadajte vo formáte +421905123456 bez medzier.'
     setFieldErrors(nextErrors)
-    if (!files.resume?.length) {
-      setFileErrors((current) => ({
-        ...current,
-        resume: 'Životopis je povinný.',
-      }))
-    }
+    setFileErrors((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([key]) => key !== 'resume'),
+      )
+      if (!files.resume?.length) next.resume = 'Životopis je povinný.'
+      return next
+    })
     return Object.keys(nextErrors).length === 0 && Boolean(files.resume?.length)
+  }
+
+  async function solveAltcha() {
+    const challenge = await request<AltchaChallenge>('/api/v1/altcha/challenge')
+    for (let number = 0; number <= challenge.maxnumber; number += 1) {
+      const input = new TextEncoder().encode(`${challenge.salt}${number}`)
+      const digest = await crypto.subtle.digest('SHA-256', input)
+      const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('')
+      if (hash === challenge.challenge) {
+        const payload = {
+          algorithm: challenge.algorithm,
+          challenge: challenge.challenge,
+          number,
+          salt: challenge.salt,
+          signature: challenge.signature,
+        }
+        return btoa(JSON.stringify(payload))
+      }
+    }
+    throw new Error('ALTCHA challenge nemá platné riešenie.')
+  }
+
+  async function uploadFile(file: File): Promise<string> {
+    const contentType = documentContentType(file)
+    if (!contentType) throw new Error(`Typ súboru ${file.name} nie je povolený.`)
+    const intent = await request<UploadIntent>('/api/v1/files/uploads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        purpose: 'application_document',
+        fileName: file.name,
+        contentType,
+        sizeBytes: file.size,
+      }),
+      idempotencyKey: crypto.randomUUID(),
+    })
+    const response = await fetch(intent.uploadUrl, {
+      method: 'PUT',
+      headers: intent.uploadHeaders,
+      body: file,
+    })
+    if (!response.ok) {
+      throw new Error(`Nahrávanie súboru ${file.name} zlyhalo (${response.status}).`)
+    }
+    return intent.fileId
+  }
+
+  async function handleSubmit(form: HTMLFormElement) {
+    setSubmitError(null)
+    if (!validateForm(form)) return
+    setIsSubmitting(true)
+    try {
+      const formData = new FormData(form)
+      const uploadedFiles = await Promise.all(
+        Object.values(files)
+          .flat()
+          .map(async (file) => ({ file, fileId: await uploadFile(file) })),
+      )
+      const fileId = (type: string) => {
+        const uploaded = uploadedFiles.find(({ file }) =>
+          files[type]?.includes(file),
+        )
+        return uploaded?.fileId
+      }
+      const otherFileIds = (files.other ?? []).map((file) => {
+        const uploaded = uploadedFiles.find((item) => item.file === file)
+        if (!uploaded) throw new Error('Chýba nahraný ostatný dokument.')
+        return uploaded.fileId
+      })
+      const cvFileId = fileId('resume')
+      if (!cvFileId) throw new Error('Chýba nahraný životopis.')
+      const altcha = await solveAltcha()
+      await submitApplication.mutateAsync({
+        altcha,
+        body: {
+          firstName: String(formData.get('firstName') ?? '').trim(),
+          lastName: String(formData.get('lastName') ?? '').trim(),
+          email: String(formData.get('email') ?? '').trim(),
+          phoneNumber: String(formData.get('phoneNumber') ?? '').trim() || null,
+          cvFileId,
+          coverLetterFileId: fileId('motivation') ?? null,
+          otherFileIds,
+        },
+      })
+      navigate(`/aktualne-pozicie/${offerId}`)
+    } catch (error) {
+      const detail =
+        error instanceof ApiError &&
+        typeof error.problem === 'object' &&
+        error.problem !== null &&
+        'detail' in error.problem &&
+        typeof error.problem.detail === 'string'
+          ? error.problem.detail
+          : error instanceof Error
+            ? error.message
+            : 'Žiadosť sa nepodarilo odoslať.'
+      setSubmitError(detail)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
   const documentFields = [
     { type: 'resume', label: 'Životopis (max. 1 súbor)', multiple: false },
@@ -263,7 +428,7 @@ export function JobApplicationPage() {
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            validateForm(event.currentTarget)
+            void handleSubmit(event.currentTarget)
           }}
         >
           <section className={styles.section}>
@@ -335,8 +500,9 @@ export function JobApplicationPage() {
             </div>
           </section>
           <div className={styles.actions}>
-            <Button type="submit" appearance="primary">
-              Odoslať
+            {submitError && <Text className={styles.submitError}>{submitError}</Text>}
+            <Button type="submit" appearance="primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Odosielanie...' : 'Odoslať'}
             </Button>
           </div>
         </form>
