@@ -7,7 +7,7 @@
 targetScope = 'subscription'
 
 @description('Azure region for every resource (infrastructure-operations-architecture.md §2).')
-param location string = 'germanywestcentral'
+param location string = 'austriaeast'
 
 @description('Short environment name, used in resource names: prod, rehearsal, ...')
 @maxLength(10)
@@ -34,7 +34,7 @@ param alertEmail string
 @description('DNS label of the public IP: the app is served at <label>.<location>.cloudapp.azure.com.')
 param dnsLabel string
 
-param vmSize string = 'Standard_B2s'
+param vmSize string = 'Standard_DS2_v2_Promo'
 
 @description('AlmaLinux 10 Marketplace image (ADR-015). Check with: az vm image list -p almalinux --all -l <location>')
 param image object = {

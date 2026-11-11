@@ -29,16 +29,18 @@ check() {
     [[ $(az account list-locations --query "[?name=='$HH_LOCATION'] | length(@)" -o tsv) == 1 ]] \
         || die "unknown region $HH_LOCATION"
 
-    local size=${HH_VM_SIZE:-Standard_B2s}
+    local size=${HH_VM_SIZE:-Standard_DS2_v2_Promo}
     log "VM size $size"
-    local restrictions
-    restrictions=$(az vm list-skus --location "$HH_LOCATION" --size "$size" --resource-type virtualMachines \
-        --query "[?name=='$size'].restrictions[].reasonCode" -o tsv)
+    local sku family restrictions
+    sku=$(az vm list-skus --location "$HH_LOCATION" --size "$size" --resource-type virtualMachines \
+        --query "[?name=='$size'] | [0].[family, join(',', restrictions[].reasonCode)]" -o tsv)
+    [[ -n $sku ]] || die "$size does not exist in $HH_LOCATION; set HH_VM_SIZE or HH_LOCATION"
+    IFS=$'\t' read -r family restrictions <<< "$sku"
     [[ -z $restrictions ]] || die "$size is restricted in $HH_LOCATION for this subscription ($restrictions); set HH_VM_SIZE or HH_LOCATION"
 
     log "vCPU quota in $HH_LOCATION"
     az vm list-usage --location "$HH_LOCATION" \
-        --query "[?name.value=='cores' || name.value=='standardBSFamily'].{quota: localName, used: currentValue, limit: limit}" -o table
+        --query "[?name.value=='cores' || name.value=='$family'].{quota: localName, used: currentValue, limit: limit}" -o table
 
     image_check
 
@@ -153,7 +155,6 @@ github() {
     set_var ENTRA_CLIENT_ID "$HH_ENTRA_CLIENT_ID"
     set_var API_SCOPE "$HH_API_SCOPE"
     set_var ENTRA_USER_DOMAIN "$HH_ENTRA_USER_DOMAIN"
-    set_var ENTRA_CROSS_TENANT_GRAPH "$(cross_tenant && echo true || echo false)"
     set_var VM_SSH_HOST "$netbird_ip"
     set_var VM_SSH_HOST_KEY "$host_key"
     gh secret set DEPLOY_SSH_KEY --repo "$repo" --env "$env" < "$deploy_key"

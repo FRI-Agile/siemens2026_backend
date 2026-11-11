@@ -16,7 +16,7 @@ public class GraphCredentialTests
     private static readonly StaffDirectoryOptions CrossTenant = new()
     {
         TenantId = SameTenant.TenantId, ApiClientId = SameTenant.ApiClientId, UserDomain = "example.com",
-        CrossTenantGraph = true,
+        GraphClientId = Guid.NewGuid().ToString(),
     };
 
     private static HostingEnvironment Environment(string name) => new() { EnvironmentName = name };
@@ -30,13 +30,17 @@ public class GraphCredentialTests
         Assert.IsType<DefaultAzureCredential>(GraphCredential.Create(Environment(Environments.Production), SameTenant));
 
     [Fact]
-    public void Production_across_tenants_signs_in_as_the_API_registration() =>
+    public void Production_across_tenants_signs_in_as_the_Graph_registration() =>
         Assert.IsType<ClientAssertionCredential>(GraphCredential.Create(Environment(Environments.Production), CrossTenant));
 
     [Fact]
     public void Cross_tenant_requires_the_tenant_id() =>
         Assert.False(new StaffDirectoryOptions
         {
-            ApiClientId = SameTenant.ApiClientId, UserDomain = "example.com", CrossTenantGraph = true,
+            ApiClientId = SameTenant.ApiClientId, UserDomain = "example.com", GraphClientId = CrossTenant.GraphClientId,
         }.IsConfigured);
+
+    [Fact]
+    public void An_empty_Graph_client_id_means_the_subscription_tenant() =>
+        Assert.False(new StaffDirectoryOptions { GraphClientId = "" }.CrossTenantGraph);
 }

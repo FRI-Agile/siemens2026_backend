@@ -28,7 +28,7 @@ load_env() {
         [[ -n "${!name:-}" ]] || die "$name is empty in $env_file"
     done
 
-    HH_LOCATION=${HH_LOCATION:-germanywestcentral}
+    HH_LOCATION=${HH_LOCATION:-austriaeast}
     HH_ENVIRONMENT=${HH_ENVIRONMENT:-prod}
     export HH_LOCATION HH_ENVIRONMENT
 
@@ -55,7 +55,8 @@ load_env() {
 }
 
 # Whether the company tenant (HH_ENTRA_TENANT_ID) is another tenant than the subscription's. The VM's managed
-# identity then reaches Graph in the company tenant through the API registration's federated credential (iam.md §4.4).
+# identity then reaches Graph in the company tenant through a multitenant registration's federated credential
+# (iam.md §4.4).
 cross_tenant() {
     local subscription_tenant
     subscription_tenant=$(az account show --query tenantId -o tsv)

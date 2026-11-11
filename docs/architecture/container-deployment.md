@@ -14,7 +14,7 @@
 
 | Property | Value |
 | -------- | ----- |
-| VM | One Azure VM in Germany West Central (EU), AlmaLinux 10 Marketplace image configured by cloud-init |
+| VM | One Azure VM in Austria East (EU), AlmaLinux 10 Marketplace image configured by cloud-init |
 | Public IP | Yes; DNS name is the application hostname (see §5) |
 | Containers | `healthyhires-caddy`, `healthyhires-api`, `healthyhires-otelcol`, `healthyhires-clamav` (rootless, in one pod); `healthyhires-falco` (rootful) |
 | Host services | `sshd` (NetBird interface only), `netbird`, `auditd`, AIDE and OpenSCAP timers, Azure Linux Agent (`waagent`), `chronyd` |
@@ -173,7 +173,7 @@ browser ──TLS──▶ Caddy ──HTTP (localhost)──▶ API ──TLS�
 
 ### 3.1 The VM
 
-- **Size:** start with a burstable B2s (2 vCPU, 4 GB RAM) and measure. ClamAV alone needs 1–2 GB, so move to B2ms (8 GB) if memory runs short.
+- **Size:** `Standard_DS2_v2_Promo` (2 vCPU, 7 GB RAM), the smallest size the Azure for Students subscription may create in Austria East, where every B-series size is blocked for it. ClamAV alone needs 1–2 GB, so 4 GB is the floor; where a subscription allows it, a burstable B2s (2 vCPU, 4 GB) costs well under half as much ([deployment guide §1.3](../docs/operations/azure-deployment-guide.md#13-what-it-costs)).
 - **Disk:** single-instance VM availability depends on the disk type. Premium SSD qualifies for Azure's 99.9 % single-VM SLA and Standard SSD for 99.5 %; both cover the 99 % target in [ADD §6.2](ADD.md#62-quality-attributes-with-measurable-targets).
 - **Network:** one VNet with a subnet for the VM and a delegated subnet for PostgreSQL private access.
 - **Provisioning:** declared in Bicep ([ADR-023](ADR.md#adr-023-infrastructure-as-code--bicep), [infrastructure-operations-architecture.md](infrastructure-operations-architecture.md)); AlmaLinux 10 Marketplace image plus cloud-init, which:
@@ -231,12 +231,12 @@ The VM stores no secrets on disk. Workloads get managed identity tokens from the
 
 ## 5. Open Items
 
-- [x] **Hostname:** the free Azure DNS label `<label>.germanywestcentral.cloudapp.azure.com`, set in `infra/azure.env`; Bicep uses it for the Blob Storage CORS origin and the availability test, and it is the SPA redirect URI ([guide §4](../operations/azure-deployment-guide.md#4-register-the-app-in-the-company-entra-tenant)).
+- [x] **Hostname:** the free Azure DNS label `<label>.austriaeast.cloudapp.azure.com`, set in `infra/azure.env`; Bicep uses it for the Blob Storage CORS origin and the availability test, and it is the SPA redirect URI ([guide §4](../operations/azure-deployment-guide.md#4-register-the-app-in-the-company-entra-tenant)).
 - [x] **Collector → Azure Monitor authentication:** connection string from Key Vault, read at every Collector start by `hh-podman-secret` with the managed identity and passed as a Podman secret. Entra authentication can replace it if the `azuremonitor` exporter gains support.
 - [ ] **Collector file access (implemented, to verify):** the Collector runs as root in the user namespace with `GroupAdd=keep-groups`, `healthyhires` is in `adm` and `systemd-journal`, and auditd uses `log_group = adm` (`infra/cloud-init.yaml`, `deploy/quadlets/user/otelcol.container`). The journal is exported to a file by `hh-journal-export.service`, because the Collector image has no `journalctl`. Verify both against the CIS baseline on the VM.
 - [ ] **Falco and rootless containers:** verify that Falco resolves the container names of the `healthyhires` user's rootless containers, so its rules can target the API and ClamAV.
 - [ ] **IMDS restriction:** all pod containers share one network namespace and one Unix user, so IMDS cannot be blocked for ClamAV and Caddy alone. Decide whether to accept this or to split containers across service users with per-user firewall rules ([iam.md §4.3](iam.md#43-the-shared-identity-risk)).
-- [ ] **VM size:** measure memory under load (k6, [ADR-018](ADR.md#adr-018-load-and-performance-testing--k6)) with ClamAV loaded and confirm B2s or move to B2ms.
+- [ ] **VM size:** measure memory under load (k6, [ADR-018](ADR.md#adr-018-load-and-performance-testing--k6)) with ClamAV loaded, to know whether a 4 GB size such as B2s would do on a subscription that allows one.
 - [ ] **API liveness check:** the `noble-chiseled` image has no shell or `curl`, so a Podman `HealthCmd` cannot call `/alive` from inside the container. Decide between a health-probe mode in the API binary itself and the Collector's `httpcheck` receiver probing `localhost:8080/alive` for alerting only.
 - [ ] **Azure OpenAI settings in the release bundle:** `provision.sh github` already writes `OPENAI_ENDPOINT` and `OPENAI_DEPLOYMENT` to the GitHub environment, but `deploy/render-bundle.sh` and `.github/workflows/deploy.yml` do not pass them to the API container yet. Add them together with the CV scoring code ([ADR-024](ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)).
 - [ ] **Cold start:** reboot the VM and confirm that every service comes back and the `502` window closes without intervention.

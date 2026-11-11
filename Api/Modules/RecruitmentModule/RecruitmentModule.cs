@@ -50,7 +50,7 @@ public static class RecruitmentModule
         services.AddOptions<StaffDirectoryOptions>()
             .BindConfiguration(StaffDirectoryOptions.SectionName)
             .Validate<IHostEnvironment>(static (options, environment) => environment.IsDevelopment() || options.IsConfigured,
-                $"{StaffDirectoryOptions.SectionName}:ApiClientId and {StaffDirectoryOptions.SectionName}:UserDomain must be set outside Development, and {StaffDirectoryOptions.SectionName}:TenantId with CrossTenantGraph.")
+                $"{StaffDirectoryOptions.SectionName}:ApiClientId and {StaffDirectoryOptions.SectionName}:UserDomain must be set outside Development, and {StaffDirectoryOptions.SectionName}:TenantId with a GraphClientId.")
             .ValidateOnStart();
 
         // The VM's managed identity in production, the developer's Azure CLI sign-in locally (iam.md §4, §8).

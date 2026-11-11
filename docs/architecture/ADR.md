@@ -636,7 +636,7 @@ Status: Accepted
 
 Context:
 
-- HR wants applications ranked by how well the CV fits the role's requirements, as an aid only, never an automatic rejection. The B2s VM cannot run a language model, and applicant data must stay in the EU.
+- HR wants applications ranked by how well the CV fits the role's requirements, as an aid only, never an automatic rejection. The application VM (2 vCPU, no GPU) cannot run a language model, and applicant data must stay in the EU.
 
 Decision:
 

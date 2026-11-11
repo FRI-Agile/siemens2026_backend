@@ -1,6 +1,6 @@
 # Deploying HealthyHires to Azure
 
-A step-by-step guide from an empty Azure subscription to the application running on `https://<label>.germanywestcentral.cloudapp.azure.com`, and how to move it to a teammate's subscription when a student credit runs out.
+A step-by-step guide from an empty Azure subscription to the application running on `https://<label>.austriaeast.cloudapp.azure.com`, and how to move it to a teammate's subscription when a student credit runs out.
 
 **Audience:** the operator — whoever owns the Azure subscription the application runs in.
 
@@ -59,11 +59,13 @@ Have an SSH key of your own (`~/.ssh/id_ed25519.pub`); create one with `ssh-keyg
 
 ### 1.3 What it costs
 
-Approximate pay-as-you-go prices in Germany West Central (Azure OpenAI: Sweden Central). Check the real numbers in **Cost Management → Cost analysis** after the first few days.
+Approximate pay-as-you-go prices in Austria East (Azure OpenAI: Sweden Central). Check the real numbers in **Cost Management → Cost analysis** after the first few days.
+
+The region and VM size are what an Azure for Students subscription could actually create: Germany West Central offered no PostgreSQL to it, Sweden Central and Poland Central refused the Burstable PostgreSQL size, and Austria East blocks every B-series VM for it, leaving the older `Standard_DS2_v2_Promo`. On a subscription without those limits, `HH_LOCATION=germanywestcentral` and `HH_VM_SIZE=Standard_B2s` cost about €55 a month less (§12).
 
 | Resource | Approx. per month | Notes |
 | -------- | ----------------- | ----- |
-| VM `Standard_B2s` + 64 GB Standard SSD | €35–40 | ClamAV needs the 4 GB of RAM; a B1s is too small |
+| VM `Standard_DS2_v2_Promo` (2 vCPU, 7 GB) + 64 GB Standard SSD | €90–95 | Most of the bill. Austria East publishes no price for the Promo size; this is DS2 v2's €0.12 per hour. ClamAV needs at least 4 GB of RAM |
 | PostgreSQL `Standard_B1ms` + 32 GB | €15–20 | Can be free for 12 months — see **Free services** in the portal |
 | Standard public IP | €3–4 | Kept while the VM is stopped |
 | Availability test (1 location, every 15 min) | €3–4 | Billed per run; 15 minutes is the longest interval Azure allows |
@@ -71,7 +73,7 @@ Approximate pay-as-you-go prices in Germany West Central (Azure OpenAI: Sweden C
 | Log Analytics / Application Insights | €0 | Inside the free 5 GB/month at this traffic |
 | Storage, Key Vault, ACS Email | < €1 |  |
 | Azure OpenAI `gpt-4o`, Standard deployment | €0 idle, ≈ €0.02–0.03 per scored CV | Billed per token: €0.0027 per 1,000 input and €0.0106 per 1,000 output tokens; 100 CVs ≈ €2–3 ([ADR-024](../architecture/ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)) |
-| **Total** | **≈ €55–70** + CV scoring | A €100 student credit lasts about seven to eight weeks if it runs 24/7 |
+| **Total** | **≈ €115–130** + CV scoring | A €100 student credit lasts about three and a half weeks if it runs 24/7 |
 
 `HH_BUDGET_AMOUNT` in `azure.env` (100 by default, in the subscription's billing currency) creates a monthly budget that e-mails you at 80 % spent and when the forecast passes 100 %. Some student offers do not support budgets; `just azure-deploy` then prints a warning, and you watch Cost analysis yourself.
 
@@ -131,7 +133,7 @@ In the [Entra admin center](https://entra.microsoft.com), signed in to the compa
 1. **HealthyHires API** — *App registrations → New registration*, single tenant, no redirect URI.
    - *Expose an API* → set the Application ID URI to `api://<api-client-id>` → add the scope `access_as_user` (admins and users can consent).
    - *App roles* → create `Recruiter`, `HiringManager` and `Admin` (the **Value**; display names *Recruiter*, *Hiring Manager*, *Administrator*), allowed member type *Users/Groups*.
-2. **HealthyHires SPA** — *New registration*, single tenant, redirect URI of type **Single-page application**: `https://<label>.germanywestcentral.cloudapp.azure.com`. For local development, also add `http://localhost:5173`.
+2. **HealthyHires SPA** — *New registration*, single tenant, redirect URI of type **Single-page application**: `https://<label>.austriaeast.cloudapp.azure.com`. For local development, also add `http://localhost:5173`.
    - *API permissions* → *Add* → *My APIs* → HealthyHires API → `access_as_user` → *Grant admin consent*.
 3. *Enterprise applications* → each of the two → *Properties* → **Assignment required = Yes**.
 4. *Enterprise applications* → HealthyHires API → *Users and groups* → assign each staff user an app role.
@@ -177,7 +179,7 @@ Read the list: on a new subscription everything is a *Create*. Then:
 just azure-deploy
 ```
 
-It takes 10–15 minutes and prints the app hostname, VM name, PostgreSQL host and Key Vault URI. It also generates the ALTCHA signing key in Key Vault the first time, and lets the VM read it. Azure OpenAI is created in Sweden Central even though everything else is in Germany West Central: it is the only allowed region where the student subscription has quota for a Standard deployment. Without `just`, the same commands are `scripts/azure/provision.sh check|what-if|deploy`.
+It takes 10–15 minutes and prints the app hostname, VM name, PostgreSQL host and Key Vault URI. It also generates the ALTCHA signing key in Key Vault the first time, and lets the VM read it. Azure OpenAI is created in Sweden Central even though everything else is in Austria East: it is the only allowed region where the student subscription has quota for a Standard deployment. Without `just`, the same commands are `scripts/azure/provision.sh check|what-if|deploy`.
 
 From this point Azure Monitor e-mails availability alerts, because nothing answers on the hostname yet. They stop after §8.
 
@@ -239,7 +241,7 @@ just azure-graph-grant
 
 It grants the Microsoft Graph application permissions `User.ReadWrite.All`, `Application.Read.All` and `AppRoleAssignment.ReadWrite.All`, which the API needs to list, create and manage staff accounts ([iam.md §4.2](../architecture/iam.md#42-role-assignments)). Granting them is admin consent, so your account needs the Entra role *Privileged Role Administrator* or *Global Administrator* in the company tenant.
 
-If the company tenant is not the subscription's tenant, the managed identity cannot call Graph there. The script then adds a federated credential to the API registration that trusts the managed identity, and grants the permissions to the API registration instead ([iam.md §4.4](../architecture/iam.md#44-graph-in-another-tenant)). Sign in to the company tenant as well, with its admin account, before running it; `just azure-github` (§8) has already told the API to sign in that way:
+If the company tenant is not the subscription's tenant, the managed identity cannot call Graph there. The script then registers the multitenant app *HealthyHires Graph (`<environment>`)* in the subscription's tenant, with a federated credential that trusts the managed identity, adds it to the company tenant and grants the permissions to it there ([iam.md §4.4](../architecture/iam.md#44-graph-in-another-tenant)). It stores the app's client id in the GitHub environment, so the next deploy (§9.2) uses it. Your account in the subscription's tenant must be allowed to register apps. Sign in to the company tenant as well, with its admin account, before running it:
 
 ```bash
 az login --tenant <HH_ENTRA_TENANT_ID> --allow-no-subscriptions
@@ -265,11 +267,11 @@ Every later push to `main` deploys by itself.
 Work through the readiness checks in [infrastructure-operations-architecture.md §4.2](../architecture/infrastructure-operations-architecture.md#42-readiness-checks). The quick ones:
 
 ```bash
-curl -fsS https://<label>.germanywestcentral.cloudapp.azure.com/health
+curl -fsS https://<label>.austriaeast.cloudapp.azure.com/health
 ```
 
 ```bash
-nc -zv -w 5 <label>.germanywestcentral.cloudapp.azure.com 22
+nc -zv -w 5 <label>.austriaeast.cloudapp.azure.com 22
 ```
 
 The first prints `Healthy`; the second must time out. On the VM:
@@ -338,7 +340,7 @@ Without `just`: `scripts/azure/power.sh pause|resume|status`. Every step is safe
 
 | | Running | Paused |
 | - | ------- | ------ |
-| Cost per month | ≈ €55–70 (§1.3) | ≈ €10–15: VM disk, public IP, PostgreSQL storage, Storage and Key Vault |
+| Cost per month | ≈ €115–130 (§1.3) | ≈ €10–15: VM disk, public IP, PostgreSQL storage, Storage and Key Vault |
 | Data, hostname, certificate, NetBird | Kept | Kept |
 | Alerts | On | Off, except the budget and the role/NSG/lock change alert |
 
@@ -431,7 +433,10 @@ Run the checks in §9.3, including the AIDE baseline. When everything works, del
 
 | Symptom | Cause and fix |
 | ------- | ------------- |
-| `azure-check`: VM size restricted, or quota too low | Student subscriptions allow only some sizes and regions. Try `HH_VM_SIZE=Standard_B2ms`, or another EU region in `HH_LOCATION`, or request a quota increase under *Quotas* |
+| `azure-check`: VM size restricted, or quota too low | Student subscriptions allow only some sizes and regions. List what this one may create with `az vm list-skus -l <region> --resource-type virtualMachines --query "[?length(restrictions)==to_number('0')].name" -o tsv` and its quotas with `az vm list-usage -l <region> -o table`, then set `HH_VM_SIZE` or another EU region in `HH_LOCATION`. Sizes with 2 vCPU and at least 4 GB RAM work |
+| VM fails with `SkuNotAvailable` … `Capacity Restrictions` | The region has no free capacity for that size right now, which `azure-check` cannot see. Try a newer equivalent (`Standard_B2ls_v2`, `Standard_B2as_v2`) or another region |
+| PostgreSQL fails with `The value of the 'Version' should be in: []` or `SkuNotAvailable` | The subscription cannot create PostgreSQL in that region (common on student subscriptions), even when `az postgres flexible-server list-skus` lists it. Try another region with a throwaway server first: `az postgres flexible-server create -g <probe-rg> -n <name> -l <region> --tier Burstable --sku-name Standard_B1ms --version 18 --public-access None --yes`, and let it finish before deleting the group |
+| `InvalidDeploymentLocation` after changing `HH_LOCATION` | The subscription-level deployment record still names the old region. After deleting the old resource group, remove the record with `az deployment sub delete -n healthyhires-<environment>` |
 | Deployment fails with `RequestDisallowedByPolicy` | The region is outside the subscription's own allowed-regions policy or outside HealthyHires' EU list in `infra/modules/policy.bicep`. `az policy assignment list -o table` shows the subscription's policy; choose a region both allow, or adjust `policy.bicep` if the subscription allows other EU regions |
 | Deployment fails with `ServiceModelDeprecated` | The model version in `infra/modules/openai.bicep` no longer accepts new deployments. List what can still be deployed with `az cognitiveservices model list -l swedencentral -o table` (check each SKU's `deprecationDate`) and set `modelName` / `modelVersion` |
 | Deployment fails with `InsufficientQuota` on the model deployment | No quota for that model and deployment type in the region. `az cognitiveservices usage list -l swedencentral -o table` shows the limits; lower `capacity` or request quota in the Azure AI Foundry portal |

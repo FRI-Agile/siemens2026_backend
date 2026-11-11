@@ -70,7 +70,7 @@ resource healthTest 'Microsoft.Insights/webtests@2022-06-15' = {
     Frequency: 900
     Timeout: 30
     RetryEnabled: true
-    // West Europe (Amsterdam), an EU location close to Germany West Central.
+    // West Europe (Amsterdam), an EU location outside the app's own region (Austria East).
     Locations: [
       { Id: 'emea-nl-ams-azr' }
     ]

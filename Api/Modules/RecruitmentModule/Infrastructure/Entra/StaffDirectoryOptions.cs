@@ -13,7 +13,7 @@ internal sealed class StaffDirectoryOptions
     /// <summary>The configuration section these are bound from.</summary>
     public const string SectionName = "Entra";
 
-    /// <summary>The company tenant's id; Graph is called in it when <see cref="CrossTenantGraph"/> is set.</summary>
+    /// <summary>The company tenant's id; Graph is called in it when <see cref="GraphClientId"/> is set.</summary>
     public string? TenantId { get; set; }
 
     /// <summary>
@@ -26,15 +26,19 @@ internal sealed class StaffDirectoryOptions
     public string? UserDomain { get; set; }
 
     /// <summary>
-    /// Whether the Azure subscription is in another tenant than the company one. The managed identity then cannot
-    /// call Graph in the company tenant itself, so the API signs in there as the API registration, whose federated
-    /// credential trusts the managed identity (iam.md §4.4).
+    /// Set only when the Azure subscription is in another tenant than the company one: the Application (client) id of
+    /// the multitenant HealthyHires Graph registration in the subscription's tenant. The managed identity cannot call
+    /// Graph in the company tenant itself, so the API signs in there as this registration, whose federated credential
+    /// trusts the managed identity (iam.md §4.4).
     /// </summary>
-    public bool CrossTenantGraph { get; set; }
+    public string? GraphClientId { get; set; }
+
+    /// <summary>Whether Graph is called in the company tenant through <see cref="GraphClientId"/>.</summary>
+    public bool CrossTenantGraph => !string.IsNullOrWhiteSpace(GraphClientId);
 
     /// <summary>Whether the values are set and well-formed, including the tenant when Graph is cross-tenant.</summary>
     public bool IsConfigured =>
         Guid.TryParse(ApiClientId, out _)
         && !string.IsNullOrWhiteSpace(UserDomain)
-        && (!CrossTenantGraph || Guid.TryParse(TenantId, out _));
+        && (!CrossTenantGraph || (Guid.TryParse(GraphClientId, out _) && Guid.TryParse(TenantId, out _)));
 }

@@ -2,7 +2,7 @@
 
 **Scope:** This document describes how the HealthyHires infrastructure is created, kept patched and changed: the region and environments, provisioning with Bicep, the host lifecycle, maintenance, drift and who operates it.
 
-**Conventions:** One Azure VM in the EU region **Germany West Central** (Frankfurt, `germanywestcentral`) ([ADR-001](ADR.md#adr-001-hosting-platform--azure-vm)) running AlmaLinux 10 ([ADR-015](ADR.md#adr-015-operating-system--almalinux-10)), next to managed PostgreSQL, Blob Storage, Key Vault, ACS Email and Azure Monitor. Azure OpenAI runs in **Sweden Central**, the only allowed region with quota for it ([ADR-024](ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)). Every Azure resource is declared in Bicep ([ADR-023](ADR.md#adr-023-infrastructure-as-code--bicep)).
+**Conventions:** One Azure VM in the EU region **Austria East** (Vienna, `austriaeast`) ([ADR-001](ADR.md#adr-001-hosting-platform--azure-vm)) running AlmaLinux 10 ([ADR-015](ADR.md#adr-015-operating-system--almalinux-10)), next to managed PostgreSQL, Blob Storage, Key Vault, ACS Email and Azure Monitor. Azure OpenAI runs in **Sweden Central**, the only allowed region with quota for it ([ADR-024](ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)). Every Azure resource is declared in Bicep ([ADR-023](ADR.md#adr-023-infrastructure-as-code--bicep)).
 
 **Status:** the Bicep templates, cloud-init file, host scripts and operator scripts exist (`infra/`, `deploy/`, `scripts/azure/`) but have not yet been applied to a real subscription. The step-by-step procedure is the [Azure deployment guide](../operations/azure-deployment-guide.md). Open questions are collected in §8.
 
@@ -24,7 +24,7 @@ This document owns **how the infrastructure is created and maintained**. Other d
 | Environment | Where | Created from | Data |
 | ----------- | ----- | ------------ | ---- |
 | **Local** | Developer machine | Aspire AppHost ([aspire-dev-stack.md](aspire-dev-stack.md)) | Throwaway, recreated on every run |
-| **Production** | Germany West Central, resource group `rg-healthyhires-prod` | `infra/main.bicep` with `HH_ENVIRONMENT=prod` | Real data |
+| **Production** | Austria East, resource group `rg-healthyhires-prod` | `infra/main.bicep` with `HH_ENVIRONMENT=prod` | Real data |
 | **Rehearsal** (temporary) | Same region, resource group `rg-healthyhires-<name>` | The same templates with `HH_ENVIRONMENT=<name>`, locks and purge protection off | Synthetic only |
 
 - There is **no standing staging environment**. A budget-limited student subscription cannot pay for a second VM and database that sit idle.
@@ -126,7 +126,7 @@ The VM holds no business data, so it is replaced rather than repaired when it is
 
 1. Delete the VM and its OS disk, and remove its peer in NetBird.
 2. Redeploy `main.bicep`. It recreates the VM, and with it a **new** system-assigned managed identity; the role assignments in the template follow it automatically.
-3. Repeat §4.1 steps 2, 3, 5, 6, 7 and 8. The PostgreSQL login role is bound to the old identity, so `db-grant-identity.sh` creates one for the new identity and drops the old one; objects stay owned by `healthyhires_app`. The Graph permissions went with the old identity, so `graph-grant-identity.sh` grants them again; when the company tenant is another tenant, it points the API registration's federated credential at the new identity instead ([iam.md §4.4](iam.md#44-graph-in-another-tenant)).
+3. Repeat §4.1 steps 2, 3, 5, 6, 7 and 8. The PostgreSQL login role is bound to the old identity, so `db-grant-identity.sh` creates one for the new identity and drops the old one; objects stay owned by `healthyhires_app`. The Graph permissions went with the old identity, so `graph-grant-identity.sh` grants them again; when the company tenant is another tenant, it points the HealthyHires Graph registration's federated credential at the new identity instead ([iam.md §4.4](iam.md#44-graph-in-another-tenant)).
 
 A compromised host is never cloned or snapshotted into its replacement.
 
@@ -175,7 +175,7 @@ Unattended production reboots are off: an update that needs a reboot waits for t
 
 ## 8. Open Items
 
-- [ ] **Region capacity:** confirm that the subscription can create the VM size ([container-deployment.md §3.1](container-deployment.md#31-the-vm)) and PostgreSQL Flexible Server in Germany West Central; `provision.sh check` reports both.
+- [x] **Region capacity:** checked on the Azure for Students subscription. Germany West Central offers it no PostgreSQL, Sweden Central and Poland Central refuse Burstable PostgreSQL, and Austria East allows PostgreSQL 18 on B1ms but no B-series VM, hence `Standard_DS2_v2_Promo` ([container-deployment.md §3.1](container-deployment.md#31-the-vm)). `provision.sh check` reports the VM size and its quota; PostgreSQL shows only at deploy ([deployment guide §12](../operations/azure-deployment-guide.md#12-troubleshooting)).
 - [ ] **First real apply:** the templates compile and lint cleanly, but have not been deployed yet; expect fixes on the first run.
 - [ ] **First provisioning:** run §4.1 in a rehearsal resource group end to end, then in production.
 - [ ] **Rebuild drill:** replace the VM (§4.3) and record how long it takes, as input to the RTO in `backup-recovery-plan.md`.

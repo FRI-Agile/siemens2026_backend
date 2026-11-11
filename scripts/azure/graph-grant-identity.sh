@@ -6,23 +6,46 @@
 #
 # Who holds the permissions depends on where the company tenant is (iam.md §4.4):
 #   - the subscription's tenant: the VM's managed identity itself;
-#   - another tenant: the API registration there, which gets a federated credential trusting the managed identity,
-#     so the API signs in to the company tenant without a secret.
+#   - another tenant: the multitenant registration "HealthyHires Graph (<environment>)" in the subscription's tenant,
+#     whose federated credential trusts the managed identity, added to the company tenant. Its client id goes to the
+#     GitHub environment as ENTRA_GRAPH_CLIENT_ID, so the next deploy signs the API in that way, without a secret.
 #
 # Granting an application permission is admin consent, so the operator needs the Entra role Privileged Role
-# Administrator or Global Administrator in the tenant that holds them. Idempotent: a permission already held is left
-# alone, and the federated credential is updated to the current identity.
+# Administrator or Global Administrator in the company tenant. Idempotent: a permission already held is left alone, and
+# the federated credential is updated to the current identity.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 load_env
-need jq
-[[ -n ${HH_ENTRA_TENANT_ID:-} && -n ${HH_API_SCOPE:-} ]] || die "HH_ENTRA_TENANT_ID and HH_API_SCOPE are empty in $env_file (guide §4)"
+need jq gh
+[[ -n ${HH_ENTRA_TENANT_ID:-} ]] || die "HH_ENTRA_TENANT_ID is empty in $env_file (guide §4)"
 
 graph_api=https://graph.microsoft.com/v1.0
 identity=$(output vmPrincipalId)
 subscription_tenant=$(az account show --query tenantId -o tsv)
 cross=false
 cross_tenant && cross=true
+
+# In the subscription's tenant, as the operator there. Entra accepts a managed identity's token as a federated
+# credential only for a registration in the identity's own tenant (AADSTS700236 otherwise), and reaches another
+# tenant only through a multitenant registration added to it.
+if $cross; then
+    name="HealthyHires Graph ($HH_ENVIRONMENT)"
+    graph_app=$(az ad app list --display-name "$name" --query '[].appId' -o tsv)
+    [[ $(wc -w <<< "$graph_app") -le 1 ]] || die "several app registrations are named $name in tenant $subscription_tenant"
+    if [[ -z $graph_app ]]; then
+        log "Registering $name in tenant $subscription_tenant"
+        graph_app=$(az ad app create --display-name "$name" --sign-in-audience AzureADMultipleOrgs --query appId -o tsv)
+    fi
+    log "Trusting the VM's managed identity on $name"
+    credential=$(jq -nc --arg issuer "https://login.microsoftonline.com/$subscription_tenant/v2.0" --arg subject "$identity" \
+        '{name: "healthyhires-vm", issuer: $issuer, subject: $subject, audiences: ["api://AzureADTokenExchange"]}')
+    if az ad app federated-credential show --id "$graph_app" --federated-credential-id healthyhires-vm -o none 2> /dev/null; then
+        az ad app federated-credential update --id "$graph_app" --federated-credential-id healthyhires-vm \
+            --parameters "$credential" -o none
+    else
+        az ad app federated-credential create --id "$graph_app" --parameters "$credential" -o none
+    fi
+fi
 
 # The operator's admin account in the company tenant is often another account than the subscription's. az keeps every
 # signed-in account, so the one in that tenant is made current for the token: HH_ENTRA_ADMIN_UPN when several are.
@@ -42,23 +65,18 @@ az account set --subscription "$HH_SUBSCRIPTION_ID"
 graph() { az rest --skip-authorization-header --headers "Authorization=Bearer $token" "$@"; }
 
 if $cross; then
-    api_client_id=${HH_API_SCOPE#api://}
-    api_client_id=${api_client_id%%/*}
-    log "Trusting the VM's managed identity on the API registration in tenant $HH_ENTRA_TENANT_ID"
-    app=$(graph --method GET --url "$graph_api/applications(appId='$api_client_id')?\$select=id" --query id -o tsv)
-    credential=$(jq -nc --arg issuer "https://login.microsoftonline.com/$subscription_tenant/v2.0" \
-        --arg subject "$identity" '{issuer: $issuer, subject: $subject, audiences: ["api://AzureADTokenExchange"]}')
-    existing=$(graph --method GET --url "$graph_api/applications/$app/federatedIdentityCredentials" \
-        --query "value[?name=='healthyhires-vm'].id" -o tsv)
-    if [[ -n $existing ]]; then
-        graph --method PATCH --url "$graph_api/applications/$app/federatedIdentityCredentials/$existing" \
-            --body "$credential" --output none
-    else
-        graph --method POST --url "$graph_api/applications/$app/federatedIdentityCredentials" \
-            --body "$(jq -c '. + {name: "healthyhires-vm"}' <<< "$credential")" --output none
-    fi
-    principal=$(graph --method GET --url "$graph_api/servicePrincipals(appId='$api_client_id')?\$select=id" \
-        --query id -o tsv)
+    # The registration's service principal in the company tenant holds the permissions there. A registration created a
+    # moment ago can take a minute to become visible to another tenant.
+    principal=$(graph --method GET --url "$graph_api/servicePrincipals(appId='$graph_app')?\$select=id" \
+        --query id -o tsv 2> /dev/null || true)
+    for attempt in 1 2 3 4 5 6; do
+        [[ -z $principal ]] || break
+        log "Adding $name to tenant $HH_ENTRA_TENANT_ID (attempt $attempt)"
+        principal=$(graph --method POST --url "$graph_api/servicePrincipals" --body "{\"appId\":\"$graph_app\"}" \
+            --query id -o tsv 2> /dev/null || true)
+        [[ -n $principal ]] || sleep 10
+    done
+    [[ -n $principal ]] || die "could not add $name ($graph_app) to tenant $HH_ENTRA_TENANT_ID"
 else
     principal=$identity
 fi
@@ -82,4 +100,12 @@ for permission in User.ReadWrite.All Application.Read.All AppRoleAssignment.Read
     log "granted: $permission"
 done
 
-log "Done: the API can manage staff accounts. New permissions reach the identity's tokens within about an hour."
+# The API learns how to reach Graph from the GitHub environment (deploy/render-bundle.sh): the registration's client id
+# when cross-tenant, nothing when the managed identity calls Graph itself.
+if $cross; then
+    gh variable set ENTRA_GRAPH_CLIENT_ID --repo "$HH_GITHUB_REPOSITORY" --env production --body "$graph_app"
+else
+    gh variable delete ENTRA_GRAPH_CLIENT_ID --repo "$HH_GITHUB_REPOSITORY" --env production 2> /dev/null || true
+fi
+
+log "Done: the API can manage staff accounts after its next deploy. New permissions and a new federated credential can take several minutes, permissions up to an hour, to take effect."

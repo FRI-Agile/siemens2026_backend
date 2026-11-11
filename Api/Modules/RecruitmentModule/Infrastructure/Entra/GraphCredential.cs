@@ -12,8 +12,8 @@ internal static class GraphCredential
 
     /// <summary>
     /// The developer's Azure CLI sign-in in Development; otherwise the VM's managed identity, either directly or, when
-    /// the subscription is in another tenant, as the assertion with which the API registration signs in to the company
-    /// tenant.
+    /// the subscription is in another tenant, as the assertion with which the HealthyHires Graph registration signs in
+    /// to the company tenant.
     /// </summary>
     /// <remarks>
     /// Locally the CLI is asked directly: <see cref="DefaultAzureCredential"/> tries the managed identity first, whose
@@ -27,7 +27,7 @@ internal static class GraphCredential
             return new DefaultAzureCredential();
 
         ManagedIdentityCredential identity = new(ManagedIdentityId.SystemAssigned);
-        return new ClientAssertionCredential(options.TenantId, options.ApiClientId,
+        return new ClientAssertionCredential(options.TenantId, options.GraphClientId,
             async ct => (await identity.GetTokenAsync(new TokenRequestContext([TokenExchangeScope]), ct)).Token);
     }
 }

@@ -39,7 +39,7 @@ api_client_id=${api_client_id%%/*}
 
 # The API connects with its managed identity: no password, so Aspire.Azure.Npgsql uses an Entra token, and the
 # session runs as the healthyhires_app group role that owns the schemas (scripts/azure/db-grant-identity.sh).
-# ENTRA_CROSS_TENANT_GRAPH is optional: environments set up before it existed are in the subscription's tenant.
+# ENTRA_GRAPH_CLIENT_ID is set only when the company tenant is another tenant (scripts/azure/graph-grant-identity.sh).
 # AZURE_TOKEN_CREDENTIALS names the managed identity outright. Aspire's Azure clients recognise Azure only by App
 # Service's IDENTITY_ENDPOINT or AZURE_CLIENT_ID; on a VM, which has neither, they fall back to developer credentials
 # without the managed identity, and every token request fails.
@@ -55,7 +55,7 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,service.version=$RELE
 Entra__TenantId=$ENTRA_TENANT_ID
 Entra__ApiClientId=$api_client_id
 Entra__UserDomain=$ENTRA_USER_DOMAIN
-Entra__CrossTenantGraph=${ENTRA_CROSS_TENANT_GRAPH:-false}
+Entra__GraphClientId=${ENTRA_GRAPH_CLIENT_ID:-}
 EOF
 
 cat > "$work/env/caddy.env" <<EOF

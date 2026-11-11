@@ -3,7 +3,7 @@
 // infra/azure.env.example). A teammate's subscription therefore needs only their own azure.env.
 using 'main.bicep'
 
-param location = readEnvironmentVariable('HH_LOCATION', 'germanywestcentral')
+param location = readEnvironmentVariable('HH_LOCATION', 'austriaeast')
 param environmentName = readEnvironmentVariable('HH_ENVIRONMENT', 'prod')
 
 param operatorObjectId = readEnvironmentVariable('HH_OPERATOR_OBJECT_ID')
@@ -14,7 +14,7 @@ param githubRepository = readEnvironmentVariable('HH_GITHUB_REPOSITORY')
 param alertEmail = readEnvironmentVariable('HH_ALERT_EMAIL')
 param dnsLabel = readEnvironmentVariable('HH_DNS_LABEL', 'healthyhires')
 
-param vmSize = readEnvironmentVariable('HH_VM_SIZE', 'Standard_B2s')
+param vmSize = readEnvironmentVariable('HH_VM_SIZE', 'Standard_DS2_v2_Promo')
 param image = {
   publisher: 'almalinux'
   offer: readEnvironmentVariable('HH_IMAGE_OFFER', 'almalinux-x86_64')
