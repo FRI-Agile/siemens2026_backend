@@ -21,14 +21,27 @@ need jq
 graph_api=https://graph.microsoft.com/v1.0
 identity=$(output vmPrincipalId)
 subscription_tenant=$(az account show --query tenantId -o tsv)
-if cross_tenant; then tenant=$HH_ENTRA_TENANT_ID; else tenant=$subscription_tenant; fi
+cross=false
+cross_tenant && cross=true
 
-# Graph in the chosen tenant, with the operator's token for it rather than for the subscription's tenant.
-token=$(az account get-access-token --tenant "$tenant" --resource-type ms-graph --query accessToken -o tsv) \
-    || die "not signed in to tenant $tenant; run: az login --tenant $tenant --allow-no-subscriptions"
+# The operator's admin account in the company tenant is often another account than the subscription's. az keeps every
+# signed-in account, so the one in that tenant is made current for the token: HH_ENTRA_ADMIN_UPN when several are.
+use_tenant_account() {
+    local users
+    users=$(az account list --all --query "[?tenantId=='$1'].user.name" -o tsv | sort -u)
+    [[ -n ${HH_ENTRA_ADMIN_UPN:-} ]] && users=$(grep -ix "$HH_ENTRA_ADMIN_UPN" <<< "$users" || true)
+    [[ -n $users ]] || die "no admin account signed in to tenant $1; run: az login --tenant $1 --allow-no-subscriptions"
+    [[ $(wc -l <<< "$users") == 1 ]] \
+        || die "several accounts are signed in to tenant $1 ($(paste -sd ' ' <<< "$users")); set HH_ENTRA_ADMIN_UPN to the admin one"
+    az account set --subscription "$(az account list --all --query "[?tenantId=='$1' && user.name=='$users'] | [0].id" -o tsv)"
+}
+
+if $cross; then use_tenant_account "$HH_ENTRA_TENANT_ID"; fi
+token=$(az account get-access-token --resource-type ms-graph --query accessToken -o tsv) || die "could not get a Graph token"
+az account set --subscription "$HH_SUBSCRIPTION_ID"
 graph() { az rest --skip-authorization-header --headers "Authorization=Bearer $token" "$@"; }
 
-if cross_tenant; then
+if $cross; then
     api_client_id=${HH_API_SCOPE#api://}
     api_client_id=${api_client_id%%/*}
     log "Trusting the VM's managed identity on the API registration in tenant $tenant"

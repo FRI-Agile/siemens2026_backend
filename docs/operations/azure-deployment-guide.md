@@ -239,11 +239,13 @@ just azure-graph-grant
 
 It grants the Microsoft Graph application permissions `User.ReadWrite.All`, `Application.Read.All` and `AppRoleAssignment.ReadWrite.All`, which the API needs to list, create and manage staff accounts ([iam.md §4.2](../architecture/iam.md#42-role-assignments)). Granting them is admin consent, so your account needs the Entra role *Privileged Role Administrator* or *Global Administrator* in the company tenant.
 
-If the company tenant is not the subscription's tenant, the managed identity cannot call Graph there. The script then adds a federated credential to the API registration that trusts the managed identity, and grants the permissions to the API registration instead ([iam.md §4.4](../architecture/iam.md#44-graph-in-another-tenant)). Sign in to the company tenant as well before running it; `just azure-github` (§8) has already told the API to sign in that way:
+If the company tenant is not the subscription's tenant, the managed identity cannot call Graph there. The script then adds a federated credential to the API registration that trusts the managed identity, and grants the permissions to the API registration instead ([iam.md §4.4](../architecture/iam.md#44-graph-in-another-tenant)). Sign in to the company tenant as well, with its admin account, before running it; `just azure-github` (§8) has already told the API to sign in that way:
 
 ```bash
 az login --tenant <HH_ENTRA_TENANT_ID> --allow-no-subscriptions
 ```
+
+If more than one account is signed in to that tenant (`az account list --all -o table`), set `HH_ENTRA_ADMIN_UPN` in `infra/azure.env` to the admin one.
 
 ### 9.2 First deploy
 
