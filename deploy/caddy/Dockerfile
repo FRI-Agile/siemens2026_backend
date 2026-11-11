@@ -9,22 +9,22 @@ RUN npm ci
 COPY App/ ./
 RUN npm run build
 
-# The released Caddy 2.11.7 binary was built with a Go toolchain and golang.org/x/net that have High findings
-# (HTTP/2 and TLS denial of service), and no newer Caddy exists yet. Rebuilding the same Caddy version with the
-# patched toolchain and module keeps the Trivy gate at zero findings without waiving anything (ADR-008). Drop this
-# stage, and the COPY below, once a Caddy release ships with them.
-FROM docker.io/library/golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS caddy
+# The released Caddy 2.11.9 binary was built with a golang.org/x/net that has a High finding (HTML parser denial of
+# service), and no newer Caddy exists yet. Rebuilding the same Caddy version with the patched toolchain and module
+# keeps the Trivy gate free of fixable findings (ADR-008). Drop this stage, and the COPY below, once a Caddy release
+# ships with them. go-jose v3 has no fix yet and is accepted in .trivyignore.
+FROM docker.io/library/golang:1.26.10-alpine@sha256:87c65a688975c0b1d4585d204874c45ca78354670e3a5f11368c5a492303d696 AS caddy
 WORKDIR /build
 RUN go mod init healthyhires/caddy \
  && printf '%s\n' 'package main' \
       'import caddycmd "github.com/caddyserver/caddy/v2/cmd"' \
       'import _ "github.com/caddyserver/caddy/v2/modules/standard"' \
       'func main() { caddycmd.Main() }' > main.go \
- && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.60.0 \
+ && go get github.com/caddyserver/caddy/v2@v2.11.9 golang.org/x/net@v0.62.0 \
  && go mod tidy \
  && CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o /caddy .
 
-FROM docker.io/library/caddy:2.11.7@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772
+FROM docker.io/library/caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0
 COPY --from=caddy /caddy /usr/bin/caddy
 COPY configs_production/Caddyfile.production /etc/caddy/Caddyfile
 COPY configs_production/site.caddy /etc/caddy/site.caddy

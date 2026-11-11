@@ -4,3 +4,8 @@
 # Format: one vulnerability id per line, preceded by a comment:
 #   # <reason> — review by YYYY-MM-DD
 #   CVE-2026-12345
+
+# go-jose v3 in the edge image's Caddy, no fixed version: DoS through crafted RSA parameters in a JWK. Caddy pulls it
+# in only through smallstep/certificates, its internal CA and ACME server, which configs_production does not enable
+# (no acme_server, pki or tls internal). Drop once a fix exists — review by 2027-01-11
+CVE-2026-116587

@@ -44,7 +44,7 @@ graph() { az rest --skip-authorization-header --headers "Authorization=Bearer $t
 if $cross; then
     api_client_id=${HH_API_SCOPE#api://}
     api_client_id=${api_client_id%%/*}
-    log "Trusting the VM's managed identity on the API registration in tenant $tenant"
+    log "Trusting the VM's managed identity on the API registration in tenant $HH_ENTRA_TENANT_ID"
     app=$(graph --method GET --url "$graph_api/applications(appId='$api_client_id')?\$select=id" --query id -o tsv)
     credential=$(jq -nc --arg issuer "https://login.microsoftonline.com/$subscription_tenant/v2.0" \
         --arg subject "$identity" '{issuer: $issuer, subject: $subject, audiences: ["api://AzureADTokenExchange"]}')
