@@ -74,7 +74,7 @@ public abstract class StaffTest : BrowserTest
     }
 
     /// <summary>
-    /// Finishes a sign-out on Entra's pages, after the test clicked "Sign out" on <paramref name="page"/>, and returns
+    /// Finishes a sign-out on Entra's pages, after the test clicked "Odhlásiť sa" on <paramref name="page"/>, and returns
     /// once the browser is back on the frontend.
     /// </summary>
     /// <param name="page">A page from <see cref="SignInSeparatelyAsAsync"/>.</param>

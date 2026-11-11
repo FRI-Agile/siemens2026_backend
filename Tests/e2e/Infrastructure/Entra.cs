@@ -44,10 +44,10 @@ internal static class Entra
     }
 
     /// <summary>
-    /// After the frontend's "Sign out", whatever Entra asks until it sends the browser back: which account to sign out,
+    /// After the frontend's "Odhlásiť sa", whatever Entra asks until it sends the browser back: which account to sign out,
     /// when Entra was not told (the ID token has no <c>login_hint</c> claim).
     /// </summary>
-    /// <param name="page">The page that clicked "Sign out".</param>
+    /// <param name="page">The page that clicked "Odhlásiť sa".</param>
     /// <param name="user">Who is signing out.</param>
     public static async Task FinishSignOutAsync(IPage page, TestUser user)
     {

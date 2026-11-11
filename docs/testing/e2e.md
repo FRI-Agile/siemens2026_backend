@@ -92,7 +92,7 @@ An applicant test derives from `E2EPageTest` and uses its `Page`. A staff test d
 | --- | --- | --- |
 | A signed-in staff member | `await SignInAsAsync(StaffRole.Recruiter)` | The usual choice. Quick: each role signs in once per run, and every page reuses it |
 | A signed-out visitor | `await SignedOutPageAsync()` | E.g. to check that the staff area asks for a sign-in |
-| To click *Sign out* | `await SignInSeparatelyAsAsync(StaffRole.Recruiter)`, then after the click `await FinishSignOutAsync(page, StaffRole.Recruiter)` | Only for sign-out. A full Entra sign-in of its own, so slower; signing out of the shared one would break the other tests |
+| To click *Odhlásiť sa* | `await SignInSeparatelyAsAsync(StaffRole.Recruiter)`, then after the click `await FinishSignOutAsync(page, StaffRole.Recruiter)` | Only for sign-out. A full Entra sign-in of its own, so slower; signing out of the shared one would break the other tests |
 
 Each call opens a new page in its own browser context, so one test can call it more than once, e.g. `SignInAsAsync(StaffRole.Admin)` and `SignInAsAsync(StaffRole.Recruiter)`, and check that only one of them can act.
 
@@ -109,7 +109,7 @@ public class StaffHomePageTests : StaffTest
 
         await page.GotoAsync("/staff");
 
-        await Expect(page.GetByRole(AriaRole.Heading, new() { NameRegex = new Regex("^Welcome, ") })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Heading, new() { NameRegex = new Regex("^Vitajte "), Level = 1 })).ToBeVisibleAsync();
     }
 }
 ```

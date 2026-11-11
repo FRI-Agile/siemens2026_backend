@@ -17,7 +17,7 @@ public class StaffHomePageTests : StaffTest
         await page.GotoAsync("/staff");
 
         // The greeting comes from /me, so it proves the whole chain, not just that the page rendered.
-        await Expect(page.GetByRole(AriaRole.Heading, new() { NameRegex = new Regex("^Welcome, ") })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Heading, new() { NameRegex = new Regex("^Vitajte "), Level = 1 })).ToBeVisibleAsync();
         await Expect(page).ToHaveURLAsync(new Regex($"^{Regex.Escape(E2ESettings.BaseUrl)}/staff"));
     }
 }

@@ -10,6 +10,6 @@ public class HomePageTests : E2EPageTest
     {
         await Page.GotoAsync("/");
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Hello, HealthyHires!" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Nájdite miesto, kde môžete rásť.", Level = 1 })).ToBeVisibleAsync();
     }
 }

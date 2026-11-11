@@ -3,11 +3,12 @@ using E2E.Infrastructure;
 
 namespace E2E.Staff;
 
-/// <summary>The "Staff sign in" and "Sign out" buttons, and that both reach Entra.</summary>
+/// <summary>The staff sign-in ("Zamestnanecký vstup", then the Microsoft button) and "Odhlásiť sa", and that both reach Entra.</summary>
 public class SignInOutTests : StaffTest
 {
     private static readonly Regex EntraUrl = new(@"^https://login\.microsoftonline\.com/");
     private static readonly Regex HomeUrl = new($"^{Regex.Escape(E2ESettings.BaseUrl)}/?$");
+    private static readonly Regex LoginUrl = new($"^{Regex.Escape(E2ESettings.BaseUrl)}/login$");
 
     [Fact]
     public async Task Staff_sign_in_sends_a_visitor_to_Entra()
@@ -15,7 +16,9 @@ public class SignInOutTests : StaffTest
         IPage page = await SignedOutPageAsync();
         await page.GotoAsync("/");
 
-        await page.GetByRole(AriaRole.Link, new() { Name = "Staff sign in" }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "Zamestnanecký vstup" }).ClickAsync();
+        await Expect(page).ToHaveURLAsync(LoginUrl);
+        await page.GetByRole(AriaRole.Link, new() { Name = "Prihláste sa pomocou Microsoftu" }).ClickAsync();
 
         await Expect(page).ToHaveURLAsync(EntraUrl);
         await Expect(page.Locator("input[name=loginfmt]")).ToBeVisibleAsync();
@@ -26,12 +29,12 @@ public class SignInOutTests : StaffTest
     {
         IPage page = await SignInSeparatelyAsAsync(StaffRole.Recruiter);
 
-        await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Odhlásiť sa" }).ClickAsync();
         await FinishSignOutAsync(page, StaffRole.Recruiter);
 
         // Back on the public home page, with MSAL's tokens gone from this tab.
         await Expect(page).ToHaveURLAsync(HomeUrl);
-        await Expect(page.GetByRole(AriaRole.Link, new() { Name = "Staff sign in" })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Link, new() { Name = "Zamestnanecký vstup" })).ToBeVisibleAsync();
         Assert.False(await page.EvaluateAsync<bool>("() => Object.keys(sessionStorage).some(k => k.includes('accesstoken'))"));
 
         // The Entra session ended too: the staff area asks who is signing in instead of signing straight back in.
