@@ -76,6 +76,9 @@ resource entraAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@20
     principalName: operatorPrincipalName
     tenantId: tenant().tenantId
   }
+  // A configuration write leaves the server briefly inaccessible, and an admin write at the same moment fails with
+  // AadAuthOperationCannotBePerformedWhenServerIsNotAccessible.
+  dependsOn: [extensions]
 }
 
 resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
