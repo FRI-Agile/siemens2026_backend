@@ -94,30 +94,22 @@ public class ListPublishedJobPostsHandlerTests
     }
 
     [Fact]
-    public async Task Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
+    public void Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
     {
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-
-        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListPublishedJobPostsQuery
+        // The rules the query validation decorator enforces before the handler runs.
+        IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(new ListPublishedJobPostsQuery
         {
             Offset = -1,
             Limit = ListPublishedJobPostsQuery.MaxLimit + 1,
             Search = new string('a', ListPublishedJobPostsQuery.MaxSearchLength + 1),
             EmploymentType = "TPP",
-        }));
+        });
 
         Assert.Equal(
             new[] { nameof(ListPublishedJobPostsQuery.Offset), nameof(ListPublishedJobPostsQuery.Limit),
                 nameof(ListPublishedJobPostsQuery.Search), nameof(ListPublishedJobPostsQuery.EmploymentType) }.Order(),
-            e.Errors.Keys.Order());
-    }
-
-    [Fact]
-    public async Task A_limit_of_zero_is_400()
-    {
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-
-        await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListPublishedJobPostsQuery { Limit = 0 }));
+            errors!.Keys.Order());
+        Assert.Equal(["Hodnota musí byť aspoň 0."], errors[nameof(ListPublishedJobPostsQuery.Offset)]);
     }
 
     [Fact]

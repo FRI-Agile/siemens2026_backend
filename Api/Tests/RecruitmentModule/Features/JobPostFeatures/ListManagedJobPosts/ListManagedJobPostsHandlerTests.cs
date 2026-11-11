@@ -86,30 +86,22 @@ public class ListManagedJobPostsHandlerTests
     }
 
     [Fact]
-    public async Task Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
+    public void Out_of_range_paging_a_long_search_and_an_unknown_type_are_all_reported()
     {
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-
-        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListManagedJobPostsQuery
+        // The rules the query validation decorator enforces before the handler runs.
+        IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(new ListManagedJobPostsQuery
         {
             Offset = -1,
             Limit = ListManagedJobPostsQuery.MaxLimit + 1,
             Search = new string('a', ListManagedJobPostsQuery.MaxSearchLength + 1),
             EmploymentType = "TPP",
-        }));
+        });
 
         Assert.Equal(
             new[] { nameof(ListManagedJobPostsQuery.Offset), nameof(ListManagedJobPostsQuery.Limit),
                 nameof(ListManagedJobPostsQuery.Search), nameof(ListManagedJobPostsQuery.EmploymentType) }.Order(),
-            e.Errors.Keys.Order());
-    }
-
-    [Fact]
-    public async Task A_limit_of_zero_is_400()
-    {
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-
-        await Assert.ThrowsAsync<ValidationException>(() => ListAsync(db, new ListManagedJobPostsQuery { Limit = 0 }));
+            errors!.Keys.Order());
+        Assert.Equal(["Hodnota musí byť aspoň 0."], errors[nameof(ListManagedJobPostsQuery.Offset)]);
     }
 
     [Fact]
@@ -122,13 +114,10 @@ public class ListManagedJobPostsHandlerTests
     }
 
     [Fact]
-    public async Task An_unknown_status_is_400()
+    public void An_unknown_status_is_refused()
     {
-        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(new ListManagedJobPostsQuery { Status = "archived" });
 
-        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
-            () => ListAsync(db, new ListManagedJobPostsQuery { Status = "archived" }));
-
-        Assert.Equal([nameof(ListManagedJobPostsQuery.Status)], e.Errors.Keys);
+        Assert.Equal([nameof(ListManagedJobPostsQuery.Status)], errors!.Keys);
     }
 }

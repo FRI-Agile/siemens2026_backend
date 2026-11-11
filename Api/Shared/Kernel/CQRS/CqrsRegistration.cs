@@ -35,8 +35,10 @@ public static class CqrsRegistration
     /// /<see cref="ValidationDecorator{TCommand,TResult}"/> so commands are validated before
     /// they run, and outermost with <see cref="EventScopeDecorator{TCommand}"/>
     /// /<see cref="EventScopeDecorator{TCommand,TResult}"/> so every change the handler saves carries
-    /// the command's <see cref="ICommand.EventName"/>. Must be called once in <c>Program.cs</c> <em>after</em> all module registrations so each
-    /// handler is wrapped exactly once. A no-op when no matching handler is registered.
+    /// the command's <see cref="ICommand.EventName"/>; and every query handler with
+    /// <see cref="QueryValidationDecorator{TQuery,TResult}"/>, so a query's attributes are enforced the same way. A query
+    /// changes nothing, so it gets no event scope. Must be called once in <c>Program.cs</c> <em>after</em> all module
+    /// registrations so each handler is wrapped exactly once. A no-op when no matching handler is registered.
     /// </summary>
     /// <param name="services">The application service collection.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
@@ -48,6 +50,7 @@ public static class CqrsRegistration
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(ValidationDecorator<,>));
         services.TryDecorate(typeof(ICommandHandler<>), typeof(EventScopeDecorator<>));
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(EventScopeDecorator<,>));
+        services.TryDecorate(typeof(IQueryHandler<,>), typeof(QueryValidationDecorator<,>));
         return services;
     }
 }

@@ -7,7 +7,7 @@ namespace Tests.Shared.CQRS;
 /// <summary>
 /// Tests the Scrutor wiring in <see cref="CqrsRegistration"/>: the scan finds every handler shape, internal ones
 /// included, and registers it scoped; the decorators wrap each command handler exactly once with validation inside
-/// the event scope; queries are left undecorated. Handlers live in <see cref="Probe"/>, scanned on their own, so the
+/// the event scope, and each query handler with validation alone. Handlers live in <see cref="Probe"/>, scanned on their own, so the
 /// rest of the test assembly does not leak into the container.
 /// </summary>
 public class CqrsRegistrationTests
@@ -56,13 +56,17 @@ public class CqrsRegistrationTests
     }
 
     [Fact]
-    public async Task A_query_handler_is_not_decorated()
+    public async Task A_query_handler_is_validated_but_gets_no_event_scope()
     {
-        // Queries change nothing, so they are neither validated nor stamped with an event.
+        // A query changes nothing, so it has no event to name; its attributes are enforced like a command's.
         await using ServiceProvider provider = Provider();
         await using AsyncServiceScope scope = provider.CreateAsyncScope();
+        IQueryHandler<Probe.Find, string> handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<Probe.Find, string>>();
 
-        Assert.IsType<Probe.FindHandler>(scope.ServiceProvider.GetRequiredService<IQueryHandler<Probe.Find, string>>());
+        Assert.IsType<QueryValidationDecorator<Probe.Find, string>>(handler);
+        Assert.Equal("found", await handler.HandleAsync(new Probe.Find(Guid.NewGuid()), Ct));
+        await Assert.ThrowsAsync<Kernel.Exceptions.ValidationException>(
+            () => handler.HandleAsync(new Probe.Find(Guid.Empty), Ct));
     }
 
     [Fact]

@@ -66,6 +66,7 @@ public class JobPostEndpointTests
         builder.Services.AddExceptionHandler<AppExceptionHandler>();
         builder.Services.AddDbContext<RecruitmentDbContext>(o => o.UseNpgsql(connectionString));
         builder.Services.AddCqrsHandlers(typeof(CreateJobPostHandler).Assembly);
+        builder.Services.AddCqrsDecorators();
         builder.Services.AddSingleton<IStaffDirectory>(new FakeStaffDirectory { Staff = { Recruiter } });
 
         WebApplication app = builder.Build();

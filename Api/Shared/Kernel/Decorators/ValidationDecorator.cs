@@ -6,7 +6,7 @@ using Kernel.Errors;
 namespace Kernel.Decorators;
 
 /// <summary>
-/// Validates a command's public properties against their DataAnnotations attributes and throws a
+/// Validates a command's or a query's public properties against their DataAnnotations attributes and throws a
 /// <see cref="Exceptions.ValidationException"/> carrying the member-keyed Slovak messages
 /// (<see cref="ValidationMessages"/>) when any rule fails.
 /// </summary>
@@ -16,7 +16,7 @@ namespace Kernel.Decorators;
 /// precisely so it knows <em>which</em> attribute failed and can word its message. Per-property semantics match
 /// the framework's: a failing <see cref="RequiredAttribute"/> short-circuits the rest of that property's
 /// rules, so a missing value reports that it is required, rather than also tripping every format rule.
-/// Class-level attributes and <see cref="IValidatableObject"/> are not consulted — commands express their
+/// Class-level attributes and <see cref="IValidatableObject"/> are not consulted — commands and queries express their
 /// rules per property, and the OpenAPI schema mirror does the same.
 /// </remarks>
 internal static class CommandValidator
@@ -122,3 +122,25 @@ public sealed class ValidationDecorator<TCommand, TResult>(
     }
 }
 
+/// <summary>
+/// Decorates a query handler, running the same DataAnnotations validation as <see cref="ValidationDecorator{TCommand,TResult}"/>
+/// on the query before delegating to the wrapped <paramref name="inner"/> handler, so a query's attributes are enforced
+/// as well as copied into the request schema. Throws <see cref="Exceptions.ValidationException"/> when validation fails;
+/// a query without attributes passes untouched.
+/// </summary>
+/// <typeparam name="TQuery">The query type being validated.</typeparam>
+/// <typeparam name="TResult">The result produced by the query.</typeparam>
+/// <param name="inner">The handler to invoke once validation passes.</param>
+public sealed class QueryValidationDecorator<TQuery, TResult>(
+    IQueryHandler<TQuery, TResult> inner) : IQueryHandler<TQuery, TResult>
+{
+    /// <summary>Validates the query, then forwards it to the inner handler.</summary>
+    /// <param name="query">The query to validate and handle.</param>
+    /// <param name="ct">Token to cancel the operation.</param>
+    /// <returns>The result produced by the inner handler.</returns>
+    public Task<TResult> HandleAsync(TQuery query, CancellationToken ct = default)
+    {
+        CommandValidator.Validate(query!);
+        return inner.HandleAsync(query, ct);
+    }
+}

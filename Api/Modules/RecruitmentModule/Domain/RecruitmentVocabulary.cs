@@ -111,6 +111,16 @@ public static class ApplicationStatuses
     public const string Rejected = "odmietnutý";
 }
 
+/// <summary>The orders a list of a post's applications can be read in, by when they were submitted.</summary>
+public static class ApplicationSorts
+{
+    /// <summary>Most recently submitted first; the default.</summary>
+    public const string Newest = "newest";
+
+    /// <summary>First submitted first.</summary>
+    public const string Oldest = "oldest";
+}
+
 /// <summary>What a file submitted with an application is (<c>application_document.type</c>; Slovak codes, ADR-D009).</summary>
 /// <remarks>
 /// An application has at most one <see cref="Cv"/> and one <see cref="CoverLetter"/>, which the database enforces, and the

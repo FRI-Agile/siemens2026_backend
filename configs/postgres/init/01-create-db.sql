@@ -251,15 +251,17 @@ CREATE TABLE recruitment.application (
     CONSTRAINT application_status_valid CHECK (status IN (
         'nová žiadosť', 'predvýber', 'pohovor', 'ponuka', 'prijatý', 'odmietnutý'))
 );
--- One application per e-mail and post, regardless of case: applying again to the same post is refused. Leading with
--- the post, it is also the job post detail's lookup of the post's applications.
+-- One application per e-mail and post, regardless of case: applying again to the same post is refused.
 CREATE UNIQUE INDEX uq_application_job_post_id_email ON recruitment.application (job_post_id, lower(email));
--- The applicant search, `immutable_unaccent(display_name) ILIKE immutable_unaccent('%…%') OR` the same on `email`:
--- a trigram index per column over the unaccented text, combined with a BitmapOr like the job post search.
+-- A post's applicants newest or oldest first, a page at a time (the staff job post detail); read backwards for newest.
+CREATE INDEX idx_application_job_post_id_created_at ON recruitment.application (job_post_id, created_at, id);
+-- The applicant search. The name is accent-insensitive and fuzzy: `immutable_unaccent(display_name)` matched with
+-- `ILIKE immutable_unaccent('%…%')` or pg_trgm's word similarity (`immutable_unaccent(term) <% …`), so "kasuba" and a
+-- typo like "kasubo" find "Kašuba". The e-mail is a plain `ILIKE '%…%'`. A trigram index per column, combined with a
+-- BitmapOr.
 CREATE INDEX idx_application_display_name
     ON recruitment.application USING gin (recruitment.immutable_unaccent(display_name) public.gin_trgm_ops);
-CREATE INDEX idx_application_email
-    ON recruitment.application USING gin (recruitment.immutable_unaccent(email) public.gin_trgm_ops);
+CREATE INDEX idx_application_email ON recruitment.application USING gin (email public.gin_trgm_ops);
 CREATE TRIGGER trg_application_set_audit
     BEFORE UPDATE ON recruitment.application
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();

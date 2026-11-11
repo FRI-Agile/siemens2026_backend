@@ -41,8 +41,8 @@ public interface ICommandHandler<in TCommand, TResult> where TCommand : ICommand
 }
 
 /// <summary>
-/// Handles a read-only query and returns a result. Queries are not validated by the
-/// command validation decorator.
+/// Handles a read-only query and returns a result. Its DataAnnotations attributes are enforced before it runs by
+/// <see cref="Decorators.QueryValidationDecorator{TQuery,TResult}"/>, as a command's are; it gets no event scope.
 /// </summary>
 /// <typeparam name="TQuery">The query type to handle.</typeparam>
 /// <typeparam name="TResult">The result produced by the query.</typeparam>

@@ -186,9 +186,10 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 | Name | Columns | Type | Purpose |
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id |
-| `uq_application_job_post_id_email` | `(job_post_id, lower(email))` | unique | One application per e-mail and post, regardless of case; leading with the post, also the job post detail's list of its applications |
-| `idx_application_display_name` | `(recruitment.immutable_unaccent(display_name) public.gin_trgm_ops)` | GIN trigram | The search on the name, ignoring case and accents |
-| `idx_application_email` | `(recruitment.immutable_unaccent(email) public.gin_trgm_ops)` | GIN trigram | The search on the e-mail, ignoring case and accents |
+| `uq_application_job_post_id_email` | `(job_post_id, lower(email))` | unique | One application per e-mail and post, regardless of case |
+| `idx_application_job_post_id_created_at` | `(job_post_id, created_at, id)` | btree | A post's applicants newest or oldest first, a page at a time, without a sort; read backwards for newest |
+| `idx_application_display_name` | `(recruitment.immutable_unaccent(display_name) public.gin_trgm_ops)` | GIN trigram | The fuzzy name search: unaccented `ILIKE` and word similarity (`<%`) |
+| `idx_application_email` | `(email public.gin_trgm_ops)` | GIN trigram | The e-mail search, a plain `ILIKE '%…%'` |
 
 **Triggers**
 
@@ -213,16 +214,21 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 - **Status moves `nová žiadosť → predvýber → pohovor → ponuka → prijatý`, and `odmietnutý` from any step before
   `prijatý`.** Staff move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
   application enforces the moves; the table only guards the value set.
-- **The job post detail lists its applications** — first name, last name, e-mail and status — by `job_post_id`, with
-  no join; the position column is the post's own title.
+- **The job post detail lists its applications** (`ListApplications`) — first name, last name, e-mail and status — by
+  `job_post_id`, with no join; the position column is the post's own title. Newest or oldest first, by
+  `(created_at, id)` so offset pages neither repeat nor skip a row, served by `idx_application_job_post_id_created_at`.
+  Who may list them is the post's: an administrator any post, a recruiter the posts assigned to them (`recruiter_id`),
+  a hiring manager the posts they created (`created_by`), as `JobPostAccess` decides; any other post answers `404`.
 - **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
   never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
   columns joined with `OR` would not.
-- **Search is accent-insensitive.** `ApplicationQueryExtensions.MatchingSearch` compares
-  `immutable_unaccent(display_name)` and `immutable_unaccent(email)` with `ILIKE immutable_unaccent('%…%')`, so
-  "kasuba" finds "Kašuba". Each column has its own trigram index over exactly that expression, combined with a
-  `BitmapOr` ([search indexes](../conventions.md#search-indexes)); a query that drops the wrapper cannot use them.
-  `ApplicationQueryExtensionsTests` pins the query to both.
+- **The name search is accent-insensitive and fuzzy; the e-mail search is a plain contains.**
+  `ApplicationQueryExtensions.MatchingSearch` matches `immutable_unaccent(display_name) ILIKE
+  immutable_unaccent('%…%')` or `immutable_unaccent(term) <% immutable_unaccent(display_name)` (pg_trgm word
+  similarity, default threshold 0.6), so "kasuba" and the typo "kasubo" find "Kašuba", while "kasbua" does not. The
+  e-mail matches `email ILIKE '%…%'`. Each branch is served by its column's trigram index, combined with a `BitmapOr`
+  ([search indexes](../conventions.md#search-indexes)); a name query that drops the `immutable_unaccent` wrapper cannot
+  use its index. `ApplicationQueryExtensionsTests` pins the query to both.
 
 ## `application_document`
 

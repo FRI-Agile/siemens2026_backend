@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using Kernel.CQRS;
-using Kernel.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
@@ -9,8 +8,8 @@ using RecruitmentModule.Infrastructure;
 namespace RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
 
 /// <summary>
-/// One page of the published job posts, newest first, optionally filtered. Queries are not validated by the decorator,
-/// so the attributes document the rules (the request schema copies them) and the handler enforces the same ones.
+/// One page of the published job posts, newest first, optionally filtered. The attributes are the
+/// rules: the request schema copies them, and the query validation decorator enforces them.
 /// </summary>
 public sealed record ListPublishedJobPostsQuery
 {
@@ -24,7 +23,7 @@ public sealed record ListPublishedJobPostsQuery
     public const int MaxSearchLength = 200;
 
     /// <summary>How many matching posts to skip.</summary>
-    [Range(0, int.MaxValue)]
+    [Range(0, int.MaxValue, ErrorMessage = "Hodnota musí byť aspoň 0.")]
     public int Offset { get; init; }
 
     /// <summary>How many posts to return, 1 to <see cref="MaxLimit"/>.</summary>
@@ -65,21 +64,6 @@ internal sealed class ListPublishedJobPostsHandler(RecruitmentDbContext db)
 {
     public async Task<ListPublishedJobPostsResponse> HandleAsync(ListPublishedJobPostsQuery query, CancellationToken ct = default)
     {
-        // Queries are not validated (implementation-guide.md §6), so the query's attributes are enforced here.
-        ValidationErrors errors = new();
-        if (query.Offset < 0)
-            errors.Add(nameof(query.Offset), "Hodnota musí byť aspoň 0.");
-        if (query.Limit is < 1 or > ListPublishedJobPostsQuery.MaxLimit)
-            errors.Add(nameof(query.Limit), $"Hodnota musí byť aspoň 1 a najviac {ListPublishedJobPostsQuery.MaxLimit}.");
-        if (query.Search?.Length > ListPublishedJobPostsQuery.MaxSearchLength)
-            errors.Add(nameof(query.Search), $"Text môže mať najviac {ListPublishedJobPostsQuery.MaxSearchLength} znakov.");
-        if (query.EmploymentType is not (null or EmploymentTypes.FullTime or EmploymentTypes.PartTime
-            or EmploymentTypes.FixedTerm or EmploymentTypes.WorkPerformanceAgreement
-            or EmploymentTypes.WorkActivityAgreement or EmploymentTypes.StudentWorkAgreement
-            or EmploymentTypes.SelfEmployed))
-            errors.Add(nameof(query.EmploymentType), "Zvoľte jednu z povolených hodnôt.");
-        errors.ThrowIfAny();
-
         IQueryable<JobPost> posts = db.JobPosts.AsNoTracking()
             .Where(p => p.Status == JobPostStatuses.Published)
             .MatchingSearch(query.Search);

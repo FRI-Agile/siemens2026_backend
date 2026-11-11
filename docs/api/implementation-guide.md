@@ -205,7 +205,7 @@ A feature is **one folder**, `Features/<Area>/<Feature>/`, holding three files.
 **`<Feature>Handler.cs`**: the **command** (or **query**), the **response** and the **handler**, kept together.
 
 - The **command** implements `ICommand` and names its feature event: `public static string EventName => ModuleEvents.JobOfferCreated;`, a lower `snake_case`, past-tense constant from the vocabulary, with no module prefix. The compiler requires it. While the command runs, the name is ambient ([§7](#7-the-decorator-chain)), so the audit trail and other modules can tell *which feature* made a change.
-- The command carries the **validation**, as DataAnnotations attributes ([§6](#6-validation)). Queries are not validated.
+- The command or query carries the **validation**, as DataAnnotations attributes ([§6](#6-validation)).
 - The **handler** implements `ICommandHandler<TCommand, TResult>`, the void `ICommandHandler<TCommand>`, or `IQueryHandler<TQuery, TResult>`. It takes its `DbContext` and services through the primary constructor and works against the `DbContext` directly.
 - It **signals failure by throwing** a `Kernel.Exceptions` type: `NotFoundException` → 404, `ConflictException` → 409, `ValidationException` → 400, and so on. The message is the Slovak `detail` the frontend shows the user as is; each type has a default, and a specific reason passes its own: `new ConflictException("Na túto ponuku sa už nedá prihlásiť, pretože je uzavretá.")` ([errors.md § Messages](errors/errors.md#messages)).
 
@@ -327,9 +327,9 @@ group.RequiresHeader("X-Client-Instance", "Identifies the browser tab the draft 
 
 ## 6. Validation
 
-A command's rules are plain DataAnnotations attributes on its properties: `[Required]`, `[StringLength]`, `[Range]`, `[AllowedValues]`, and the Kernel's `[NotEmpty]` and `[DecimalPrecision]`.
+A command's or a query's rules are plain DataAnnotations attributes on its properties: `[Required]`, `[StringLength]`, `[Range]`, `[AllowedValues]`, and the Kernel's `[NotEmpty]` and `[DecimalPrecision]`.
 
-When an attribute fails, `ValidationDecorator` throws a `ValidationException` (`400`) carrying the rule's Slovak message under `errors` ([errors.md § Validation messages](errors/errors.md#validation-messages)). The built-in attributes are worded for you; set `ErrorMessage` in Slovak where the generic wording says too little, as a `[RegularExpression]` usually does. A failing `[Required]` short-circuits that property's other rules, so a missing value reports only that it is required. Class-level attributes and `IValidatableObject` are not consulted; a rule spanning several fields belongs in the handler, or in `Infrastructure/Validation/` when it needs the database.
+When an attribute fails, `ValidationDecorator` (commands) or `QueryValidationDecorator` (queries) throws a `ValidationException` (`400`) carrying the rule's Slovak message under `errors` ([errors.md § Validation messages](errors/errors.md#validation-messages)). The built-in attributes are worded for you; set `ErrorMessage` in Slovak where the generic wording says too little, as a `[RegularExpression]` usually does. A failing `[Required]` short-circuits that property's other rules, so a missing value reports only that it is required. Class-level attributes and `IValidatableObject` are not consulted; a rule spanning several fields belongs in the handler, or in `Infrastructure/Validation/` when it needs the database.
 
 The attributes live on the command, but the OpenAPI document describes the request DTO the endpoint binds. **`CommandValidationSchemaTransformer` joins the two by name**: it copies each rule from `<Feature>Command` or `<Feature>Query` onto the matching property of `<Feature>Request`, provided both are in the same namespace. Properties are matched by name, ignoring case.
 
@@ -337,7 +337,7 @@ A rule left out of the schema is a value the document calls legal and the API re
 
 - **Express a rule as an attribute wherever an attribute can say it**, and keep the request and command names paired. "Strictly positive" is `[Range(0d, double.MaxValue, MinimumIsExclusive = true)]`, which becomes `exclusiveMinimum` rather than a `minimum` that advertises `0`. A fixed set is `[AllowedValues]`, built from the vocabulary constants the handler compares against.
 - **A `decimal` `[Range]` sets `ParseLimitsInInvariantCulture = true`** (and `ConvertValueInInvariantCulture = true`); otherwise it throws under a comma-decimal culture.
-- **Queries are not validated.** An attribute on a query only documents a rule; the handler still has to enforce it. Put the attribute and the check side by side, referencing the same constants.
+- **Queries are validated the same way.** A query's attributes are enforced by `QueryValidationDecorator` before its handler runs, with the same Slovak messages, so the handler does not repeat them. A handler test that calls the handler directly bypasses the decorator; check the rules with `CommandValidation.Run(query)` instead.
 
 ## 7. The decorator chain
 
@@ -350,7 +350,7 @@ EventScopeDecorator  →  ValidationDecorator  →  the handler
 - **`EventScopeDecorator`** makes the command's `EventName` the ambient `EventScope.Current` while the command runs, and restores the previous one afterwards. Anything that records a change during the command, such as an outbox row or an audit entry, reads the name from there instead of every handler passing it along.
 - **`ValidationDecorator`** validates the command ([§6](#6-validation)). An invalid command never reaches the handler.
 
-Query handlers are not decorated: a query changes nothing, so it has no rules to enforce before it runs and no event to name.
+Every query handler is wrapped in `QueryValidationDecorator` alone: its attributes are enforced like a command's, but a query changes nothing, so it has no event to name.
 
 ### Adding a decorator
 
@@ -418,7 +418,7 @@ static Task<IResult> Handler(Guid id, ClaimsPrincipal user, ...) =>
 - **Vertical slices, CQRS.** One feature = one folder = Request + Command/Response/Handler + Endpoint. Writes are `ICommandHandler`, reads are `IQueryHandler`.
 - **No Application layer, no repository.** Use the `DbContext` directly.
 - **Manual DTO mapping** ([ADR-A012](../architecture/ADR-ASPNET.md#adr-a012-dto-mapping--manual-mapping)). No AutoMapper.
-- **Validation lives on the command** as DataAnnotations; the decorator enforces it, and the request schema copies it. Queries aren't validated.
+- **Validation lives on the command or query** as DataAnnotations; the decorators enforce it, and the request schema copies it.
 - **Every command names its event** with a `ModuleEvents` constant: lower `snake_case`, past tense, no module prefix.
 - **Error messages are Slovak**, written for the user, and every reachable status is declared with `.ProducesProblem(...)`.
 - **A response carrying an id another route takes declares `.ProducesLink(...)`**, filling every path parameter of the target and staying inside the module.
@@ -439,7 +439,7 @@ The Kernel tests that pin the CQRS and endpoint machinery:
 
 | Tests | What they pin |
 | ----- | ------------- |
-| `CqrsRegistrationTests` | The Scrutor scan registers each handler shape, `internal` ones included, as scoped. Command handlers are wrapped once, with the event scope outside validation. Queries are left alone. Decorating with nothing registered is a no-op. |
+| `CqrsRegistrationTests` | The Scrutor scan registers each handler shape, `internal` ones included, as scoped. Command handlers are wrapped once, with the event scope outside validation. Query handlers are wrapped in validation alone. Decorating with nothing registered is a no-op. |
 | `ValidationDecoratorTests` | An invalid command never reaches its handler and carries a Slovak message per failure; a missing value reports only that it is required; the void form validates too |
 | `CommandValidationSchemaTransformerTests` | Exclusive bounds, open upper bounds, enums, lengths and messages carry over from the command to the request schema |
 | `EndpointRegistrationTests` | Every `IEndpoint` in an assembly is mapped on the group, in type-name order |

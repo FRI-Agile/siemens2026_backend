@@ -98,7 +98,7 @@ The JSON writer escapes non-ASCII characters (`\u00FD`), so read `detail` by par
 
 Validation errors come from three places. Two of them raise a `ValidationException` and produce the same response.
 
-**Command validation** is where a feature's rules live ([implementation-guide.md §6](../implementation-guide.md#6-validation)). The `ValidationDecorator` runs the DataAnnotations attributes on a command before its handler executes. When a rule fails, it raises a `ValidationException` with the rule's Slovak message for each failure. A failing `Required` short-circuits that property's other rules, so a missing value reports only that it is required. Queries are not validated.
+**Command validation** is where a feature's rules live ([implementation-guide.md §6](../implementation-guide.md#6-validation)). The `ValidationDecorator` runs the DataAnnotations attributes on a command before its handler executes. When a rule fails, it raises a `ValidationException` with the rule's Slovak message for each failure. A failing `Required` short-circuits that property's other rules, so a missing value reports only that it is required. `QueryValidationDecorator` does the same for a query's attributes.
 
 **Handler validation** covers the cross-field rules attributes cannot express. The handler raises a `ValidationException` itself, in one of two ways:
 

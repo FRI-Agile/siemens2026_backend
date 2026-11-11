@@ -36,7 +36,7 @@ internal static class Probe
         public Guid Id { get; init; }
     }
 
-    public sealed record Find(Guid Id);
+    public sealed record Find([property: NotEmpty] Guid Id);
 
     internal sealed class CreateHandler(Recorder recorder) : ICommandHandler<Create, Guid>
     {
