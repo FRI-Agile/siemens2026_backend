@@ -39,6 +39,7 @@ api_client_id=${api_client_id%%/*}
 
 # The API connects with its managed identity: no password, so Aspire.Azure.Npgsql uses an Entra token, and the
 # session runs as the healthyhires_app group role that owns the schemas (scripts/azure/db-grant-identity.sh).
+# ENTRA_CROSS_TENANT_GRAPH is optional: environments set up before it existed are in the subscription's tenant.
 cat > "$work/env/api.env" <<EOF
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://localhost:8080
@@ -50,6 +51,7 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,service.version=$RELE
 Entra__TenantId=$ENTRA_TENANT_ID
 Entra__ApiClientId=$api_client_id
 Entra__UserDomain=$ENTRA_USER_DOMAIN
+Entra__CrossTenantGraph=${ENTRA_CROSS_TENANT_GRAPH:-false}
 EOF
 
 cat > "$work/env/caddy.env" <<EOF

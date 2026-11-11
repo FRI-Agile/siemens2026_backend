@@ -54,6 +54,14 @@ load_env() {
     az account set --subscription "$HH_SUBSCRIPTION_ID" || die "cannot select subscription $HH_SUBSCRIPTION_ID"
 }
 
+# Whether the company tenant (HH_ENTRA_TENANT_ID) is another tenant than the subscription's. The VM's managed
+# identity then reaches Graph in the company tenant through the API registration's federated credential (iam.md §4.4).
+cross_tenant() {
+    local subscription_tenant
+    subscription_tenant=$(az account show --query tenantId -o tsv)
+    [[ ${HH_ENTRA_TENANT_ID,,} != "${subscription_tenant,,}" ]]
+}
+
 # One output of the last deployment, e.g. output vmName.
 output() {
     az deployment sub show --name "$deployment" --query "properties.outputs.$1.value" -o tsv

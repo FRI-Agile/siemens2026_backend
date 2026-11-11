@@ -1,4 +1,3 @@
-using Azure.Identity;
 using Kernel.CQRS;
 using Kernel.Endpoints;
 using Kernel.Files;
@@ -9,6 +8,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Npgsql;
 using RecruitmentModule.Domain;
@@ -50,16 +50,13 @@ public static class RecruitmentModule
         services.AddOptions<StaffDirectoryOptions>()
             .BindConfiguration(StaffDirectoryOptions.SectionName)
             .Validate<IHostEnvironment>(static (options, environment) => environment.IsDevelopment() || options.IsConfigured,
-                $"{StaffDirectoryOptions.SectionName}:ApiClientId and {StaffDirectoryOptions.SectionName}:UserDomain must be set outside Development.")
+                $"{StaffDirectoryOptions.SectionName}:ApiClientId and {StaffDirectoryOptions.SectionName}:UserDomain must be set outside Development, and {StaffDirectoryOptions.SectionName}:TenantId with CrossTenantGraph.")
             .ValidateOnStart();
 
-        // The VM's managed identity in production, the developer's Azure CLI sign-in locally (iam.md §4, §8). Locally the
-        // CLI is asked directly: DefaultAzureCredential tries the managed identity first, whose metadata endpoint does
-        // not exist off Azure and can hang until the request is cancelled instead of failing over.
-        services.AddSingleton(static sp => new GraphServiceClient(
-            sp.GetRequiredService<IHostEnvironment>().IsDevelopment()
-                ? new AzureCliCredential()
-                : new DefaultAzureCredential()));
+        // The VM's managed identity in production, the developer's Azure CLI sign-in locally (iam.md §4, §8).
+        services.AddSingleton(static sp => new GraphServiceClient(GraphCredential.Create(
+            sp.GetRequiredService<IHostEnvironment>(),
+            sp.GetRequiredService<IOptions<StaffDirectoryOptions>>().Value)));
         services.AddScoped<IStaffDirectory, GraphStaffDirectory>();
 
         return services;

@@ -126,7 +126,7 @@ The VM holds no business data, so it is replaced rather than repaired when it is
 
 1. Delete the VM and its OS disk, and remove its peer in NetBird.
 2. Redeploy `main.bicep`. It recreates the VM, and with it a **new** system-assigned managed identity; the role assignments in the template follow it automatically.
-3. Repeat §4.1 steps 2, 3, 5, 6, 7 and 8. The PostgreSQL login role is bound to the old identity, so `db-grant-identity.sh` creates one for the new identity and drops the old one; objects stay owned by `healthyhires_app`. The Graph permissions went with the old identity, so `graph-grant-identity.sh` grants them again.
+3. Repeat §4.1 steps 2, 3, 5, 6, 7 and 8. The PostgreSQL login role is bound to the old identity, so `db-grant-identity.sh` creates one for the new identity and drops the old one; objects stay owned by `healthyhires_app`. The Graph permissions went with the old identity, so `graph-grant-identity.sh` grants them again; when the company tenant is another tenant, it points the API registration's federated credential at the new identity instead ([iam.md §4.4](iam.md#44-graph-in-another-tenant)).
 
 A compromised host is never cloned or snapshotted into its replacement.
 

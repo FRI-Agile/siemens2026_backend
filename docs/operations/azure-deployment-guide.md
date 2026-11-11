@@ -42,7 +42,7 @@ Everything that differs between people or subscriptions lives in **one gitignore
 - [ ] **An Azure subscription** where you are Owner — for example Azure for Students. Note its credit and end date on the [Azure for Students](https://portal.azure.com/#view/Microsoft_Azure_Education/EducationMenuBlade/~/overview) page.
 - [ ] **A GitHub repository** for the code, under your account or a team organisation.
 - [ ] **A NetBird account** (free tier) for the admin network ([ADR-014](../architecture/ADR.md#adr-014-admin-access--netbird-operator-and-ci-runner-ssh)).
-- [ ] **The company Entra tenant** for staff sign-in — the free tenant with the pre-created staff accounts. It can be a different tenant from the one that holds the Azure subscription.
+- [ ] **The company Entra tenant** for staff sign-in — the free tenant with the pre-created staff accounts. It can be a different tenant from the one that holds the Azure subscription (§9.1 covers the difference).
 
 ### 1.2 Tools on your machine
 
@@ -156,7 +156,7 @@ In the [NetBird dashboard](https://app.netbird.io):
    - `hh-operators` → `hh-servers`
    - `hh-ci` → `hh-servers`
 3. **Your machine:** install the NetBird client, run `netbird up`, and put your peer in `hh-operators`.
-4. **CI setup key:** *Setup keys → Create* — **reusable**, **ephemeral**, auto-assigned group `hh-ci`, expiry as long as the project lasts. Keep it for §8.
+4. **CI setup key:** *Settings → Setup Keys → Create Setup Key* — **reusable**, **ephemeral**, auto-assigned group `hh-ci`, expiry as long as the project lasts. Keep it for §8.
 5. **VM setup key:** create it later, in §7, right before it is used.
 
 ## 6. Provision the Azure Resources
@@ -183,7 +183,7 @@ From this point Azure Monitor e-mails availability alerts, because nothing answe
 
 ## 7. Join the VM to NetBird
 
-In the NetBird dashboard, create a **one-off** setup key: not reusable, expiry 1 day, auto-assigned group `hh-servers`. Then:
+In the NetBird dashboard (*Settings → Setup Keys*), create a **one-off** setup key: not reusable, expiry 1 day, auto-assigned group `hh-servers`. Then:
 
 ```bash
 just azure-netbird
@@ -211,7 +211,7 @@ It generates a random password for the local `breakglass` user, stores it **only
 just azure-github
 ```
 
-This writes the deployment's outputs to the GitHub environment `production` — hostname, Blob endpoint, PostgreSQL host and login role, Key Vault URI, Azure OpenAI endpoint and deployment name, the Entra values, and the VM's NetBird address and SSH host key — and sets the deploy key as the secret `DEPLOY_SSH_KEY`. Then add the CI setup key from §5:
+This writes the deployment's outputs to the GitHub environment `production` — hostname, Blob endpoint, PostgreSQL host and login role, Key Vault URI, Azure OpenAI endpoint and deployment name, the Entra values, and the VM's NetBird address and SSH host key — and sets the deploy key as the secret `DEPLOY_SSH_KEY`. Then add the CI setup key from §5 step 4 (not the VM key from §7):
 
 ```bash
 gh secret set NETBIRD_SETUP_KEY --repo <owner>/healthyhires --env production
@@ -237,7 +237,13 @@ It creates the tables, functions and triggers from `configs/postgres/init/01-cre
 just azure-graph-grant
 ```
 
-It grants the managed identity the Microsoft Graph application permissions `User.ReadWrite.All`, `Application.Read.All` and `AppRoleAssignment.ReadWrite.All`, which administrators need to create staff accounts in HealthyHires ([iam.md §4.2](../architecture/iam.md#42-role-assignments)). Granting them is admin consent, so your account needs the Entra role *Privileged Role Administrator* or *Global Administrator*.
+It grants the Microsoft Graph application permissions `User.ReadWrite.All`, `Application.Read.All` and `AppRoleAssignment.ReadWrite.All`, which the API needs to list, create and manage staff accounts ([iam.md §4.2](../architecture/iam.md#42-role-assignments)). Granting them is admin consent, so your account needs the Entra role *Privileged Role Administrator* or *Global Administrator* in the company tenant.
+
+If the company tenant is not the subscription's tenant, the managed identity cannot call Graph there. The script then adds a federated credential to the API registration that trusts the managed identity, and grants the permissions to the API registration instead ([iam.md §4.4](../architecture/iam.md#44-graph-in-another-tenant)). Sign in to the company tenant as well before running it; `just azure-github` (§8) has already told the API to sign in that way:
+
+```bash
+az login --tenant <HH_ENTRA_TENANT_ID> --allow-no-subscriptions
+```
 
 ### 9.2 First deploy
 

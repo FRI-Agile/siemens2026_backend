@@ -125,7 +125,7 @@ Each permission is an Azure role assigned to the managed identity, scoped as nar
 | PostgreSQL | Login role for the managed identity, member of the NOLOGIN role `healthyhires_app`; created by the server's Entra admin (`scripts/azure/db-grant-identity.sh`) | The module schemas listed in `infra/db-schemas.txt`, owned by `healthyhires_app`; no right to create other schemas | API | Log in without a password ([ADR-006](ADR.md#adr-006-primary-database--postgresql-managed)) |
 | ACS Email | A role on the ACS resource that allows sending email (least-privilege role TODO) | The ACS resource | API | Send notification emails ([ADR-010](ADR.md#adr-010-email-delivery--azure-communication-services-email)) |
 | Azure OpenAI | Cognitive Services OpenAI User | The Azure OpenAI resource | API | Call the deployed model to score CVs; cannot read keys or change deployments ([ADR-024](ADR.md#adr-024-cv-scoring--azure-openai-gpt-4o-sweden-central)) |
-| Microsoft Graph | Application permissions `User.ReadWrite.All`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`; granted by a Privileged Role Administrator (`scripts/azure/graph-grant-identity.sh`) | The tenant | API | Create staff accounts and assign them an app role on the HealthyHires API (§2.4); list the staff and their roles, e.g. to check a job post's recruiter (`Application.Read.All` covers reading the role assignments), and their accounts' sign-in name and state for administrators (`User.ReadWrite.All` covers reading them) |
+| Microsoft Graph | Application permissions `User.ReadWrite.All`, `Application.Read.All`, `AppRoleAssignment.ReadWrite.All`; granted by a Privileged Role Administrator (`scripts/azure/graph-grant-identity.sh`), to the API registration instead when the company tenant is another tenant (§4.4) | The company tenant | API | Create staff accounts and assign them an app role on the HealthyHires API (§2.4); list the staff and their roles, e.g. to check a job post's recruiter (`Application.Read.All` covers reading the role assignments), and their accounts' sign-in name and state for administrators (`User.ReadWrite.All` covers reading them) |
 | Application Insights | Monitoring Metrics Publisher | The Application Insights resource | Collector | Only if the Collector sends telemetry with Entra authentication (see §9) |
 
 ### 4.3 The shared-identity risk
@@ -138,6 +138,16 @@ There is one managed identity per VM, and **every container on the VM can reach 
 The Graph permissions are the exception: they cannot be scoped below the tenant. `User.ReadWrite.All` lets the holder create and change non-admin users, and `AppRoleAssignment.ReadWrite.All` lets it grant any app role in the tenant, including further Graph permissions to itself. A token stolen through IMDS is therefore a tenant-level compromise, not only a HealthyHires one, which makes restricting IMDS access (§9) more pressing.
 
 Blocking IMDS for every container except the API and the Collector would remove the risk but needs per-container network rules (§9).
+
+### 4.4 Graph in another tenant
+
+A managed identity exists only in the tenant of its Azure subscription and gets tokens only there. When the company tenant (§2) is another tenant, for example because the subscription is a student one in a university tenant, the identity cannot call Graph in the company tenant directly. The API then signs in there **as the HealthyHires API registration**, with a federated identity credential instead of a secret:
+
+1. The API registration in the company tenant has a federated credential that trusts exactly the VM's managed identity: issuer `https://login.microsoftonline.com/<subscription-tenant>/v2.0`, subject the identity's object id, audience `api://AzureADTokenExchange`.
+2. The API asks IMDS for a managed-identity token with that audience and presents it to the company tenant as the API registration's client assertion. Entra returns a Graph token for the API registration (`GraphCredential` in the Recruitment module).
+3. The Graph permissions of §4.2 are granted to the API registration's enterprise application, not to the managed identity.
+
+`scripts/azure/graph-grant-identity.sh` detects the case from `HH_ENTRA_TENANT_ID`, creates or updates the federated credential and grants the permissions, and `scripts/azure/provision.sh github` sets `Entra:CrossTenantGraph` for the API. The credential names one identity, so it is updated after every VM rebuild, together with the grants. No secret exists in either case, and §4.3 applies unchanged: a token stolen through IMDS can be exchanged the same way.
 
 ## 5. Secrets inventory
 
