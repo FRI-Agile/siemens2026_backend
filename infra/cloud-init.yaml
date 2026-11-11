@@ -217,3 +217,10 @@ runcmd:
 
   - netbird service install
   - netbird service start
+
+# The packages above can pull in a newer kernel together with its kernel-modules-extra, which holds xt_conntrack.
+# Until the VM boots that kernel, NetBird cannot build its firewall rules and never connects. Reboot once at the
+# end of first boot when dnf says it is needed.
+power_state:
+  mode: reboot
+  condition: "! dnf needs-restarting -r > /dev/null"

@@ -183,7 +183,7 @@ From this point Azure Monitor e-mails availability alerts, because nothing answe
 
 ## 7. Join the VM to NetBird
 
-In the NetBird dashboard, create a **one-off** setup key: not reusable, expiry 1 hour, auto-assigned group `hh-servers`. Then:
+In the NetBird dashboard, create a **one-off** setup key: not reusable, expiry 1 day, auto-assigned group `hh-servers`. Then:
 
 ```bash
 just azure-netbird
