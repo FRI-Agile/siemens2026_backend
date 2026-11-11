@@ -40,9 +40,13 @@ api_client_id=${api_client_id%%/*}
 # The API connects with its managed identity: no password, so Aspire.Azure.Npgsql uses an Entra token, and the
 # session runs as the healthyhires_app group role that owns the schemas (scripts/azure/db-grant-identity.sh).
 # ENTRA_CROSS_TENANT_GRAPH is optional: environments set up before it existed are in the subscription's tenant.
+# AZURE_TOKEN_CREDENTIALS names the managed identity outright. Aspire's Azure clients recognise Azure only by App
+# Service's IDENTITY_ENDPOINT or AZURE_CLIENT_ID; on a VM, which has neither, they fall back to developer credentials
+# without the managed identity, and every token request fails.
 cat > "$work/env/api.env" <<EOF
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://localhost:8080
+AZURE_TOKEN_CREDENTIALS=ManagedIdentityCredential
 ConnectionStrings__healthyhires=Host=$PG_HOST;Database=healthyhires;Username=$PG_USER;SSL Mode=Require;Options=-c role=healthyhires_app
 ConnectionStrings__blobs=$BLOB_ENDPOINT
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317

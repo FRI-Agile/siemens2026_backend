@@ -111,7 +111,7 @@ A SAS URL is a **bearer capability**: anyone holding it can use it until it expi
 
 ### 4.1 How it works
 
-The VM has a **system-assigned managed identity**. Azure creates and rotates its credential; it is never stored on disk or visible to anyone. A workload asks the **Instance Metadata Service** (IMDS, `http://169.254.169.254`) for a token for a specific Azure service, and IMDS returns a short-lived access token. The Azure SDK (`DefaultAzureCredential`) does this automatically and refreshes tokens before they expire.
+The VM has a **system-assigned managed identity**. Azure creates and rotates its credential; it is never stored on disk or visible to anyone. A workload asks the **Instance Metadata Service** (IMDS, `http://169.254.169.254`) for a token for a specific Azure service, and IMDS returns a short-lived access token. The Azure SDK (`DefaultAzureCredential`) does this automatically and refreshes tokens before they expire. The API's environment sets `AZURE_TOKEN_CREDENTIALS=ManagedIdentityCredential` (`deploy/render-bundle.sh`): without it, Aspire's Azure clients do not recognise a plain VM as Azure and try only developer credentials.
 
 ### 4.2 Role assignments
 
