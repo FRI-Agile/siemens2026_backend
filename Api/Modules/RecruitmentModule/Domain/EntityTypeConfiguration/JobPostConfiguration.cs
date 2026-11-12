@@ -23,6 +23,7 @@ internal sealed class JobPostConfiguration : IEntityTypeConfiguration<JobPost>
         b.Property(p => p.PaymentType).HasColumnName("payment_type");
         b.Property(p => p.EmploymentType).HasColumnName("employment_type");
         b.Property(p => p.RecruiterId).HasColumnName("recruiter_id");
+        b.Property(p => p.HiringManagerId).HasColumnName("hiring_manager_id");
 
         // The column default and the audit trigger own these (conventions.md § Audit columns).
         b.Property(p => p.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();

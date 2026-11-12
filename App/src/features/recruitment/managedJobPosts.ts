@@ -22,6 +22,7 @@ export interface ManagedJobPost {
   paymentType: PaymentType
   employmentType: EmploymentType
   recruiterId: string
+  hiringManagerId: string
   createdAt: string
   createdBy: string
   updatedAt: string | null
@@ -63,6 +64,8 @@ export interface UpdateManagedJobPostBody {
   paymentType: PaymentType
   employmentType: EmploymentType
   recruiterId: string
+  /** Left out, the post keeps its hiring manager; only an admin may change it. */
+  hiringManagerId?: string
   version: number
 }
 

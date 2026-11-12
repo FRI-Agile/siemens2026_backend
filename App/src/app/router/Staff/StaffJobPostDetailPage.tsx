@@ -10,8 +10,9 @@ import {
 } from '@fluentui/react-components'
 import { ArrowLeftRegular } from '@fluentui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { type UseQueryResult } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
+import { useForm, useWatch, type UseFormRegisterReturn } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   useCloseManagedJobPost,
@@ -26,9 +27,10 @@ import {
   paymentTypes,
 } from '../../../features/recruitment/vocabulary.ts'
 import {
-  jobPostFormSchema,
+  staffJobPostFormSchema,
+  useHiringManagers,
   useRecruiters,
-  type JobPostForm,
+  type StaffJobPostForm,
 } from '../../../features/recruitment/jobPosts.ts'
 import { problemMessage } from '../../../shared/api/problem.ts'
 import { useCurrentStaff } from '../../../shared/auth/useCurrentStaff.ts'
@@ -114,7 +116,7 @@ const labels = {
   closed: 'Uzavretá',
 } as const
 
-type EditableValues = JobPostForm
+type EditableValues = StaffJobPostForm
 
 function getFormValues(post: {
   title: string
@@ -123,9 +125,10 @@ function getFormValues(post: {
   description: string
   openPositions: number
   salary: number
-  paymentType: JobPostForm['paymentType']
-  employmentType: JobPostForm['employmentType']
+  paymentType: StaffJobPostForm['paymentType']
+  employmentType: StaffJobPostForm['employmentType']
   recruiterId: string
+  hiringManagerId: string
 }): EditableValues {
   return {
     title: post.title,
@@ -137,7 +140,72 @@ function getFormValues(post: {
     paymentType: post.paymentType,
     employmentType: post.employmentType,
     recruiterId: post.recruiterId,
+    hiringManagerId: post.hiringManagerId,
   }
+}
+
+/**
+ * A post's recruiter or hiring manager, chosen from the staff with that role. When the list does not have the stored
+ * person — still loading, failed to load, or they are not (or no longer) staff with the role — the field still shows
+ * them as its value, so it never looks empty and an edit never swaps them for someone else unasked, but the open list
+ * offers only the people who can be picked.
+ */
+function StaffPicker({
+  label,
+  people,
+  currentId,
+  value,
+  disabled,
+  registration,
+  validationState,
+  validationMessage,
+}: {
+  label: string
+  people: UseQueryResult<{ id: string; displayName: string }[]>
+  currentId: string
+  value: string | undefined
+  disabled: boolean
+  registration: UseFormRegisterReturn
+  validationState?: 'error'
+  validationMessage?: string
+}) {
+  const listed = people.data?.some((person) => person.id === currentId)
+  const fallback = people.isPending
+    ? 'Načítava sa…'
+    : people.isError
+      ? 'Zoznam sa nepodarilo načítať'
+      : 'Neznámy používateľ'
+
+  return (
+    <Field
+      label={label}
+      required
+      {...(people.isError
+        ? {
+            validationState: 'error' as const,
+            validationMessage: problemMessage(people.error),
+          }
+        : { validationState, validationMessage })}
+    >
+      <Select
+        {...registration}
+        disabled={disabled || people.isPending}
+        value={value}
+      >
+        {/* Shown as the closed field's value, never offered in the list: only people with the role can be picked. */}
+        {!listed && (
+          <option value={currentId} disabled hidden>
+            {fallback}
+          </option>
+        )}
+        {people.data?.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.displayName}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  )
 }
 
 export function StaffJobPostDetailPage() {
@@ -147,6 +215,8 @@ export function StaffJobPostDetailPage() {
   const { data: post, error, isPending } = useManagedJobPost(jobPostId)
   const { data: me } = useCurrentStaff()
   const recruiters = useRecruiters(me)
+  const isAdmin = me?.roles.includes('Admin') ?? false
+  const hiringManagers = useHiringManagers(isAdmin)
   const update = useUpdateManagedJobPost()
   const close = useCloseManagedJobPost()
   const reopen = useReopenManagedJobPost()
@@ -164,7 +234,7 @@ export function StaffJobPostDetailPage() {
     handleSubmit,
     formState: { errors },
   } = useForm<EditableValues>({
-    resolver: zodResolver(jobPostFormSchema),
+    resolver: zodResolver(staffJobPostFormSchema),
     values: useMemo(() => (post ? getFormValues(post) : undefined), [post]),
   })
   const formValues = useWatch({ control })
@@ -215,6 +285,8 @@ export function StaffJobPostDetailPage() {
         {
           ...values,
           recruiterId: canEditRecruiter ? values.recruiterId : post.recruiterId,
+          // Only an admin may change it; anyone else leaves it out and the post keeps its own.
+          hiringManagerId: isAdmin ? values.hiringManagerId : undefined,
           id: post.id,
           status: post.status === 'draft' ? 'draft' : 'published',
           version: post.version,
@@ -321,20 +393,31 @@ export function StaffJobPostDetailPage() {
               )}
             />
           </Field>
-          <Field label="Recruiter" required {...fieldError('recruiterId')}>
-            <Select
-              {...register('recruiterId')}
-              disabled={!editing || !canEditRecruiter || recruiters.isPending}
-              value={editing ? formValues.recruiterId : post.recruiterId}
-            >
-              {recruiters.data?.map((recruiter) => (
-                <option key={recruiter.id} value={recruiter.id}>
-                  {recruiter.displayName}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <StaffPicker
+            label="Recruiter"
+            people={recruiters}
+            currentId={post.recruiterId}
+            value={editing ? formValues.recruiterId : post.recruiterId}
+            disabled={!editing || !canEditRecruiter}
+            registration={register('recruiterId')}
+            {...fieldError('recruiterId')}
+          />
         </div>
+        {isAdmin && (
+          <div className={styles.row}>
+            <StaffPicker
+              label="Prijímajúci manažér"
+              people={hiringManagers}
+              currentId={post.hiringManagerId}
+              value={
+                editing ? formValues.hiringManagerId : post.hiringManagerId
+              }
+              disabled={!editing}
+              registration={register('hiringManagerId')}
+              {...fieldError('hiringManagerId')}
+            />
+          </div>
+        )}
         <Field
           label="Opis pracovnej pozície"
           required

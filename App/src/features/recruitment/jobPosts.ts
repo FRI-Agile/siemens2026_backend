@@ -49,6 +49,16 @@ export const jobPostFormSchema = z.object({
 
 export type JobPostForm = z.infer<typeof jobPostFormSchema>
 
+/**
+ * The create and edit forms' rules: the job post's, plus the hiring manager an admin names. Optional here, since a
+ * hiring manager neither picks nor changes it; the pages require it from an admin.
+ */
+export const staffJobPostFormSchema = jobPostFormSchema.extend({
+  hiringManagerId: z.string().optional(),
+})
+
+export type StaffJobPostForm = z.infer<typeof staffJobPostFormSchema>
+
 /** Where a job post is in its life: `draft → published ⇄ closed` (`JobPostStatuses` in the API). */
 export type JobPostStatus = 'draft' | 'published' | 'closed'
 
@@ -56,12 +66,15 @@ export type JobPostStatus = 'draft' | 'published' | 'closed'
 export interface CreateJobPostBody extends JobPostForm {
   /** `draft` saves a draft (koncept); a new post is never closed. */
   status: Exclude<JobPostStatus, 'closed'>
+  /** Required from an admin; a hiring manager creates posts for themselves and leaves it out. */
+  hiringManagerId?: string
 }
 
 /** A job post as the API returns it. */
 export interface JobPost extends JobPostForm {
   status: JobPostStatus
   id: string
+  hiringManagerId: string
   createdAt: string
   version: number
 }
@@ -102,6 +115,30 @@ export function useRecruiters(currentStaff?: CurrentStaff) {
 
       const { users } = await request<{ users: Recruiter[] }>(
         '/api/v1/recruitment/recruiters',
+        { headers: { Authorization: `Bearer ${await getAccessToken(auth)}` } },
+      )
+      return users
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** One entry of `GET /api/v1/recruitment/hiring-managers`. */
+export interface HiringManager {
+  id: string
+  displayName: string
+}
+
+/** The staff with the HiringManager role, the people an admin chooses a job post's hiring manager from. Admins only. */
+export function useHiringManagers(enabled: boolean) {
+  const auth = useStaffAuth()
+
+  return useQuery({
+    queryKey: ['recruitment', 'hiring-managers'],
+    enabled,
+    queryFn: async (): Promise<HiringManager[]> => {
+      const { users } = await request<{ users: HiringManager[] }>(
+        '/api/v1/recruitment/hiring-managers',
         { headers: { Authorization: `Bearer ${await getAccessToken(auth)}` } },
       )
       return users

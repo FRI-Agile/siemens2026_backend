@@ -67,7 +67,7 @@ public class ListApplicationsEndpointTests
 
     public static TheoryData<string, Guid, Guid, HttpStatusCode> Callers => new()
     {
-        // role, the post's recruiter, the post's creator, the answer
+        // role, the post's recruiter, the post's hiring manager, the answer
         { StaffRoles.Admin, Guid.NewGuid(), Guid.NewGuid(), HttpStatusCode.OK },
         { StaffRoles.Recruiter, Me, Guid.NewGuid(), HttpStatusCode.OK },
         { StaffRoles.Recruiter, Guid.NewGuid(), Me, HttpStatusCode.NotFound },
@@ -78,12 +78,12 @@ public class ListApplicationsEndpointTests
     [Theory]
     [MemberData(nameof(Callers))]
     public async Task The_token_decides_whose_applicants_the_caller_reads(
-        string role, Guid recruiterId, Guid createdBy, HttpStatusCode expected)
+        string role, Guid recruiterId, Guid hiringManagerId, HttpStatusCode expected)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         JobPost post = JobPostSeed.Post("Product Owner");
         post.RecruiterId = recruiterId;
-        post.CreatedBy = createdBy;
+        post.HiringManagerId = hiringManagerId;
         (WebApplication app, _) = await StartHostAsync(post, ct);
         await using WebApplication _app = app;
         using HttpClient client = As(app, role);

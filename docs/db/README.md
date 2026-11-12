@@ -5,7 +5,7 @@ DDL remains the source of truth for the exact current shape; these documents des
 ownership, relationships, and design decisions that are not obvious from raw SQL.
 
 **Status:** Living documentation — update it with every schema migration.  
-**Schema version:** `0.10.0`
+**Schema version:** `0.11.0`
 **Database:** PostgreSQL
 **Owners:** @data
 

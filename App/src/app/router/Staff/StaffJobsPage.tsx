@@ -13,11 +13,12 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
 import {
-  jobPostFormSchema,
+  staffJobPostFormSchema,
   useCreateJobPost,
+  useHiringManagers,
   useRecruiters,
   type CreateJobPostBody,
-  type JobPostForm,
+  type StaffJobPostForm,
 } from '../../../features/recruitment/jobPosts.ts'
 import {
   employmentTypeLabels,
@@ -142,7 +143,10 @@ const formFields = [
   'paymentType',
   'openPositions',
   'recruiterId',
-] as const satisfies readonly (keyof JobPostForm)[]
+  'hiringManagerId',
+] as const satisfies readonly (keyof StaffJobPostForm)[]
+
+const hiringManagerRequired = 'Vyberte prijímajúceho manažéra.'
 
 /** The roles the API lets create a job post; here they only shape the UI. */
 const creatorRoles = ['HiringManager', 'Admin']
@@ -153,6 +157,8 @@ export function StaffJobsPage() {
   const createJobPost = useCreateJobPost()
   const { data: me } = useCurrentStaff()
   const recruiters = useRecruiters(me)
+  const isAdmin = me?.roles.includes('Admin') ?? false
+  const hiringManagers = useHiringManagers(isAdmin)
   const [saved, setSaved] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
 
@@ -166,8 +172,8 @@ export function StaffJobsPage() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<JobPostForm>({
-    resolver: zodResolver(jobPostFormSchema),
+  } = useForm<StaffJobPostForm>({
+    resolver: zodResolver(staffJobPostFormSchema),
     defaultValues: {
       title: '',
       location: '',
@@ -177,7 +183,7 @@ export function StaffJobsPage() {
     },
   })
 
-  const fieldError = (name: keyof JobPostForm) =>
+  const fieldError = (name: keyof StaffJobPostForm) =>
     errors[name]?.message
       ? {
           validationState: 'error' as const,
@@ -185,11 +191,23 @@ export function StaffJobsPage() {
         }
       : {}
 
-  function submit(values: JobPostForm, status: CreateJobPostBody['status']) {
+  function submit(
+    values: StaffJobPostForm,
+    status: CreateJobPostBody['status'],
+  ) {
     setSaved(null)
     setFailure(null)
+    // The shared schema knows nothing of roles; an admin must name the hiring manager, which the API also enforces.
+    if (isAdmin && !values.hiringManagerId) {
+      setError('hiringManagerId', { message: hiringManagerRequired })
+      return
+    }
     createJobPost.mutate(
-      { ...values, status },
+      {
+        ...values,
+        hiringManagerId: isAdmin ? values.hiringManagerId : undefined,
+        status,
+      },
       {
         onSuccess: (post) => {
           reset()
@@ -397,6 +415,39 @@ export function StaffJobsPage() {
                 ))}
               </Select>
             </Field>
+            {isAdmin && (
+              <Field
+                className={styles.field}
+                label={
+                  <span className={styles.label}>Prijímajúci manažér</span>
+                }
+                required
+                {...(hiringManagers.isError
+                  ? {
+                      validationState: 'error' as const,
+                      validationMessage: problemMessage(hiringManagers.error),
+                    }
+                  : fieldError('hiringManagerId'))}
+              >
+                <Select
+                  className={styles.input}
+                  defaultValue=""
+                  disabled={!hiringManagers.data}
+                  {...register('hiringManagerId')}
+                >
+                  <option value="" disabled>
+                    {hiringManagers.isPending
+                      ? 'Načítavam prijímajúcich manažérov…'
+                      : 'Vyberte prijímajúceho manažéra'}
+                  </option>
+                  {hiringManagers.data?.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.displayName}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
           </div>
         </section>
         <section className={styles.section}>

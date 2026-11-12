@@ -18,11 +18,18 @@ internal static class GraphCredential
     /// <remarks>
     /// Locally the CLI is asked directly: <see cref="DefaultAzureCredential"/> tries the managed identity first, whose
     /// metadata endpoint does not exist off Azure and can hang until the request is cancelled instead of failing over.
+    /// It is asked for a token in the configured tenant, not the CLI's default one: a developer signed in to several
+    /// tenants would otherwise call Graph in another tenant, which has no enterprise application for the API
+    /// (<c>Request_ResourceNotFound</c>). Without a sign-in to that tenant the call fails to authenticate instead, and
+    /// <c>az login --tenant &lt;TenantId&gt;</c> fixes it.
     /// </remarks>
     public static TokenCredential Create(IHostEnvironment environment, StaffDirectoryOptions options)
     {
         if (environment.IsDevelopment())
-            return new AzureCliCredential();
+            return new AzureCliCredential(new AzureCliCredentialOptions
+            {
+                TenantId = Guid.TryParse(options.TenantId, out _) ? options.TenantId : null,
+            });
         if (!options.CrossTenantGraph)
             return new DefaultAzureCredential();
 

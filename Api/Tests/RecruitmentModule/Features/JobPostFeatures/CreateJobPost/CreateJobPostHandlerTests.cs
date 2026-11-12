@@ -14,12 +14,14 @@ namespace Tests.RecruitmentModule.Features.JobPostFeatures.CreateJobPost;
 
 /// <summary>
 /// Creating a job post: stored as given under the real schema's constraints, with a recruiter who holds the
-/// Recruiter role.
+/// Recruiter role and a hiring manager: the hiring manager creating it, or the one an administrator names.
 /// </summary>
 public class CreateJobPostHandlerTests
 {
     private static readonly StaffMember Recruiter = new(Guid.NewGuid(), "Jana Nováková", [StaffRoles.Recruiter]);
     private static readonly StaffMember Manager = new(Guid.NewGuid(), "Peter Horváth", [StaffRoles.HiringManager]);
+    private static readonly StaffMember OtherManager = new(Guid.NewGuid(), "Lucia Kráľová", [StaffRoles.HiringManager]);
+    private static readonly StaffMember Admin = new(Guid.NewGuid(), "Eva Kováčová", [StaffRoles.Admin]);
 
     private static readonly CreateJobPostCommand Command = new()
     {
@@ -36,7 +38,16 @@ public class CreateJobPostHandlerTests
     };
 
     private static CreateJobPostHandler Handler(RecruitmentDbContext db) =>
-        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager } }, new StubCurrentUser(Manager.Id));
+        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager, OtherManager, Admin } }, new StubCurrentUser(Manager.Id));
+
+    private static CreateJobPostHandler AdminHandler(RecruitmentDbContext db) =>
+        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager, OtherManager, Admin } }, new StubCurrentUser(Admin.Id));
+
+    private static readonly CreateJobPostCommand AdminCommand = Command with
+    {
+        HiringManagerId = OtherManager.Id,
+        NamesHiringManager = true,
+    };
 
     [Fact]
     public async Task Stores_a_draft_with_its_recruiter()
@@ -55,6 +66,8 @@ public class CreateJobPostHandlerTests
         Assert.Equal(JobPostStatuses.Draft, stored.Status);
         Assert.Equal(Recruiter.Id, stored.RecruiterId);
         Assert.Equal(Manager.Id, stored.CreatedBy);
+        Assert.Equal(Manager.Id, stored.HiringManagerId);
+        Assert.Equal(Manager.Id, response.HiringManagerId);
         Assert.Null(stored.UpdatedAt);
         Assert.Equal((short)1, stored.Version);
         Assert.Equal((short)1, response.Version);
@@ -136,6 +149,72 @@ public class CreateJobPostHandlerTests
 
         await Assert.ThrowsAsync<ValidationException>(
             () => Handler(db).HandleAsync(Command with { RecruiterId = Guid.NewGuid() }, ct));
+    }
+
+    [Fact]
+    public async Task A_hiring_manager_may_name_themselves()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        CreateJobPostResponse response = await Handler(db).HandleAsync(Command with { HiringManagerId = Manager.Id }, ct);
+
+        Assert.Equal(Manager.Id, response.HiringManagerId);
+    }
+
+    [Fact]
+    public async Task A_hiring_manager_cannot_create_a_post_for_another_hiring_manager()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
+            () => Handler(db).HandleAsync(Command with { HiringManagerId = OtherManager.Id }, ct));
+
+        Assert.Contains(nameof(CreateJobPostCommand.HiringManagerId), e.Errors.Keys);
+        Assert.Equal(0, await db.JobPosts.CountAsync(ct));
+    }
+
+    [Fact]
+    public async Task An_administrator_stores_the_recruiter_and_hiring_manager_they_named()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        CreateJobPostResponse response = await AdminHandler(db).HandleAsync(AdminCommand, ct);
+
+        await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+        JobPost stored = await read.JobPosts.SingleAsync(ct);
+        Assert.Equal((Recruiter.Id, OtherManager.Id, Admin.Id), (stored.RecruiterId, stored.HiringManagerId, stored.CreatedBy));
+        Assert.Equal(OtherManager.Id, response.HiringManagerId);
+    }
+
+    [Fact]
+    public async Task An_administrator_without_a_hiring_manager_is_400_and_stores_nothing()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
+            () => AdminHandler(db).HandleAsync(AdminCommand with { HiringManagerId = null }, ct));
+
+        Assert.Equal([nameof(CreateJobPostCommand.HiringManagerId)], e.Errors.Keys);
+        Assert.Equal(0, await db.JobPosts.CountAsync(ct));
+    }
+
+    [Fact]
+    public async Task An_administrator_naming_staff_without_the_roles_is_400_on_both_fields()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
+            () => AdminHandler(db).HandleAsync(AdminCommand with { RecruiterId = Manager.Id, HiringManagerId = Recruiter.Id }, ct));
+
+        Assert.Equal(
+            [nameof(CreateJobPostCommand.HiringManagerId), nameof(CreateJobPostCommand.RecruiterId)],
+            e.Errors.Keys.Order());
+        Assert.Equal(0, await db.JobPosts.CountAsync(ct));
     }
 
     [Theory]

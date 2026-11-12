@@ -1,0 +1,49 @@
+@startuml application-status
+' The states of a recruitment.application row (docs/architecture/roles-permissions.md §5) and who may move it.
+' Edge labels are kept short: the Smetana layout clips long ones at the canvas edge.
+skinparam defaultFontName "Helvetica"
+skinparam shadowing false
+skinparam ArrowColor #555555
+skinparam state {
+    BackgroundColor #FFFFFF
+    BorderColor #1E3A5F
+    FontColor #1E3A5F
+    AttributeFontColor #555555
+    AttributeFontSize 11
+}
+
+title Candidate (application) status
+
+state "nová žiadosť" as New #FFF3E0 : submitted, not yet looked at\n**hidden from the hiring manager**
+state "predvýber" as Screening : shortlisted
+state "pohovor" as Interview : invited to an interview
+state "ponuka" as Offer : made an offer
+state "prijatý" as Hired #E8F5E9 : accepted and hired
+state "odmietnutý" as Rejected #EEEEEE : turned down
+
+[*] --> New : submitted\nor created
+
+New --> Screening : Recruiter, Admin
+Screening --> Interview : Admin\n(Recruiter: TBD)
+Interview --> Offer : Admin\n(Recruiter: TBD)
+Offer --> Hired : Admin\n(Recruiter: TBD)
+
+New --> Rejected : reject
+Screening --> Rejected : reject
+Interview --> Rejected : reject
+Offer --> Rejected : reject
+
+legend right
+  **Who moves it**
+  nová žiadosť → predvýber: Recruiter, Admin
+  predvýber → pohovor → ponuka → prijatý:
+     Admin; Recruiter TBD
+  any state before prijatý → odmietnutý
+     (reject): Recruiter, Admin
+  Hiring manager: none (read only)
+endlegend
+
+Hired --> [*]
+Rejected --> [*]
+
+@enduml

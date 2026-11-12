@@ -29,9 +29,16 @@ public sealed class JobPost
 
     /// <summary>
     /// The Entra object id of the recruiter responsible for the hiring (<i>zodpovedný za realizáciu náboru</i>),
-    /// chosen by the hiring manager who created the post. A logical reference: staff accounts live in Entra.
+    /// chosen when the post is created. A logical reference: staff accounts live in Entra.
     /// </summary>
     public Guid RecruiterId { get; set; }
+
+    /// <summary>
+    /// The Entra object id of the hiring manager the position is filled for (<i>prijímajúci manažér</i>), who sees the
+    /// post and its applicants: the hiring manager who created it, or the one an administrator named. A logical
+    /// reference, like <see cref="RecruiterId"/>.
+    /// </summary>
+    public Guid HiringManagerId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 

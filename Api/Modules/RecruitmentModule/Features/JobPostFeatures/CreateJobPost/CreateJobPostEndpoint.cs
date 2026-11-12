@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
@@ -7,7 +8,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace RecruitmentModule.Features.JobPostFeatures.CreateJobPost;
 
-/// <summary><c>POST /api/v1/recruitment/job-posts</c>: a hiring manager creates a job post.</summary>
+/// <summary>
+/// <c>POST /api/v1/recruitment/job-posts</c>: a hiring manager creates a job post for themselves; an administrator
+/// creates one for the hiring manager they name.
+/// </summary>
 internal sealed class CreateJobPostEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder group) =>
@@ -15,6 +19,7 @@ internal sealed class CreateJobPostEndpoint : IEndpoint
             .RequireStaff(StaffPolicies.HiringManager)
             .MapPost("", static async (
                 CreateJobPostRequest request,
+                ClaimsPrincipal user,
                 ICommandHandler<CreateJobPostCommand, CreateJobPostResponse> handler,
                 CancellationToken ct) =>
             {
@@ -30,6 +35,8 @@ internal sealed class CreateJobPostEndpoint : IEndpoint
                     PaymentType = request.PaymentType,
                     EmploymentType = request.EmploymentType,
                     RecruiterId = request.RecruiterId,
+                    HiringManagerId = request.HiringManagerId,
+                    NamesHiringManager = user.IsInRole(StaffRoles.Admin),
                 };
                 CreateJobPostResponse result = await handler.HandleAsync(command, ct);
 
@@ -38,6 +45,6 @@ internal sealed class CreateJobPostEndpoint : IEndpoint
             })
             .WithName("CreateJobPost")
             .Produces<CreateJobPostResponse>(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status502BadGateway) // Entra refused the recruiter lookup
+            .ProducesProblem(StatusCodes.Status502BadGateway) // Entra refused the staff lookup
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 }

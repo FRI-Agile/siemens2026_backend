@@ -21,9 +21,14 @@ public class UpdateJobPostHandlerTests
 {
     private static readonly StaffMember Recruiter = new(Guid.NewGuid(), "Jana Nováková", [StaffRoles.Recruiter]);
     private static readonly StaffMember Manager = new(Guid.NewGuid(), "Peter Horváth", [StaffRoles.HiringManager]);
+    private static readonly StaffMember OtherManager = new(Guid.NewGuid(), "Lucia Kráľová", [StaffRoles.HiringManager]);
+    private static readonly StaffMember Admin = new(Guid.NewGuid(), "Eva Kováčová", [StaffRoles.Admin]);
 
     private static UpdateJobPostHandler Handler(RecruitmentDbContext db) =>
-        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager } }, new StubCurrentUser(Manager.Id));
+        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager, OtherManager, Admin } }, new StubCurrentUser(Manager.Id));
+
+    private static UpdateJobPostHandler AdminHandler(RecruitmentDbContext db) =>
+        new(db, new FakeStaffDirectory { Staff = { Recruiter, Manager, OtherManager, Admin } }, new StubCurrentUser(Admin.Id));
 
     /// <summary>An edit of <paramref name="post"/> as last read, keeping its status and recruiter.</summary>
     private static UpdateJobPostCommand Edit(JobPost post) => new()
@@ -67,11 +72,72 @@ public class UpdateJobPostHandlerTests
         Assert.Equal(JobPostStatuses.Draft, stored.Status);
         Assert.Equal(Recruiter.Id, stored.RecruiterId);
         Assert.Equal(post.CreatedBy, stored.CreatedBy);
+        Assert.Equal(post.HiringManagerId, stored.HiringManagerId);
+        Assert.Equal(post.HiringManagerId, response.HiringManagerId);
         Assert.Equal(Manager.Id, stored.UpdatedBy);
         Assert.NotNull(stored.UpdatedAt);
         Assert.Equal((short)2, stored.Version);
         Assert.Equal((short)2, response.Version);
         Assert.Equal(stored.UpdatedAt, response.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task An_administrator_hands_the_post_to_another_hiring_manager()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+
+        UpdateJobPostResponse response = await AdminHandler(db).HandleAsync(
+            Edit(post) with { HiringManagerId = OtherManager.Id, NamesHiringManager = true }, ct);
+
+        await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+        Assert.Equal(OtherManager.Id, (await read.JobPosts.SingleAsync(ct)).HiringManagerId);
+        Assert.Equal(OtherManager.Id, response.HiringManagerId);
+    }
+
+    [Fact]
+    public async Task An_administrator_changing_both_to_staff_without_the_roles_is_400_on_both_fields()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => AdminHandler(db).HandleAsync(
+            Edit(post) with { RecruiterId = Manager.Id, HiringManagerId = Recruiter.Id, NamesHiringManager = true }, ct));
+
+        Assert.Equal(
+            [nameof(UpdateJobPostCommand.HiringManagerId), nameof(UpdateJobPostCommand.RecruiterId)],
+            e.Errors.Keys.Order());
+    }
+
+    [Fact]
+    public async Task An_administrator_naming_someone_without_the_hiring_manager_role_is_400()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(() => AdminHandler(db).HandleAsync(
+            Edit(post) with { HiringManagerId = Recruiter.Id, NamesHiringManager = true }, ct));
+
+        Assert.Equal([nameof(UpdateJobPostCommand.HiringManagerId)], e.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task A_hiring_manager_cannot_change_the_hiring_manager_but_may_resend_it()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+
+        ValidationException e = await Assert.ThrowsAsync<ValidationException>(
+            () => Handler(db).HandleAsync(Edit(post) with { HiringManagerId = OtherManager.Id }, ct));
+        Assert.Equal([nameof(UpdateJobPostCommand.HiringManagerId)], e.Errors.Keys);
+
+        // The current hiring manager is kept even though the seed's id belongs to no directory user.
+        UpdateJobPostResponse response = await Handler(db).HandleAsync(Edit(post) with { HiringManagerId = post.HiringManagerId }, ct);
+        Assert.Equal(post.HiringManagerId, response.HiringManagerId);
     }
 
     [Fact]

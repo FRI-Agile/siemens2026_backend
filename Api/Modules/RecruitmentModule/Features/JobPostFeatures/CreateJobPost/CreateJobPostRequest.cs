@@ -53,4 +53,12 @@ public sealed record CreateJobPostRequest
     /// </summary>
     /// <example>6f1c1f0e-2d0a-4a43-9a3b-1b8f8b7a2f10</example>
     public Guid RecruiterId { get; init; }
+
+    /// <summary>
+    /// The Entra object id of a staff member with the <c>HiringManager</c> role, the hiring manager the position is
+    /// filled for (prijímajúci manažér), who then sees the post and its applicants. Listed by <c>GET /hiring-managers</c>.
+    /// Required from an administrator; a hiring manager creates posts for themselves and leaves it out.
+    /// </summary>
+    /// <example>3b7e2c55-8f0a-4d1e-9c6b-2a4f5e6d7c80</example>
+    public Guid? HiringManagerId { get; init; }
 }

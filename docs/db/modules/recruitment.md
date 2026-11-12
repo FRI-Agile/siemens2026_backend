@@ -47,7 +47,8 @@ so `scripts/azure/db-grant-identity.sh` creates it in Azure.
 | `salary` | `NUMERIC(10,2)` |  | NO |  | The wage in EUR, per hour, month or year as `payment_type` says |
 | `payment_type` | `TEXT` |  | NO |  | How the wage is stated — see CHECK |
 | `employment_type` | `TEXT` |  | NO |  | The form of employment (*typ pracovného pomeru*) — see CHECK |
-| `recruiter_id` | `UUID` | LFK | NO |  | Entra object id of the staff member with the `Recruiter` role responsible for the hiring (*zodpovedný za realizáciu náboru*), chosen by the hiring manager who creates the post |
+| `recruiter_id` | `UUID` | LFK | NO |  | Entra object id of the staff member with the `Recruiter` role responsible for the hiring (*zodpovedný za realizáciu náboru*), chosen when the post is created |
+| `hiring_manager_id` | `UUID` | LFK | NO |  | Entra object id of the staff member with the `HiringManager` role the position is filled for (*prijímajúci manažér*): the hiring manager who creates the post, or the one an administrator names |
 
 **Value sets**
 
@@ -75,6 +76,7 @@ change both together.
 | Column | References | On delete | Notes |
 | ------ | ---------- | --------- | ----- |
 | `recruiter_id` | Entra ID user (`oid`) | — | logical — no DB FK; the role is checked on write — see [ADR-D004](../decision-log.md#adr-d004--a-job-posts-recruiter-is-an-entra-object-id-checked-by-the-application) |
+| `hiring_manager_id` | Entra ID user (`oid`) | — | logical — no DB FK, like `recruiter_id`; the role is checked when an administrator names it |
 
 **Constraints**
 
@@ -96,6 +98,7 @@ change both together.
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id |
 | `idx_job_post_recruiter_id` | `(recruiter_id)` | btree | A recruiter's own job posts |
+| `idx_job_post_hiring_manager_id` | `(hiring_manager_id)` | btree | A hiring manager's own job posts |
 | `idx_job_post_title` | `(recruitment.immutable_unaccent(title) public.gin_trgm_ops)` | GIN trigram | The lists' fuzzy search on the title: unaccented `ILIKE` and word similarity (`<%`) |
 | `idx_job_post_location` | `(recruitment.immutable_unaccent(location) public.gin_trgm_ops)` | GIN trigram | The lists' fuzzy search on the location: unaccented `ILIKE` and word similarity (`<%`) |
 
@@ -108,8 +111,11 @@ change both together.
 **Notes**
 
 - **Who writes what.** Only a hiring manager (or an administrator) creates a job post (`POST /job-posts`), and names
-  its recruiter in the same request, choosing from `GET /recruiters`. Any hiring manager can then
-  edit it (`PUT /job-posts/{id}`), close it (`POST …/close`) or reopen it (`POST …/reopen`), so the table keeps
+  its recruiter in the same request, choosing from `GET /recruiters`. A hiring manager creates the post for
+  themselves (`hiring_manager_id` is their `oid`); an administrator must also name its hiring manager, choosing from
+  `GET /hiring-managers` (administrators only), so a post never lacks either. Any hiring manager can then
+  edit it (`PUT /job-posts/{id}`; only an administrator may change `hiring_manager_id` there, and a new recruiter or
+  hiring manager is checked for the role), close it (`POST …/close`) or reopen it (`POST …/reopen`), so the table keeps
   `updated_by`. Each of them carries the `version` the caller read ([optimistic locking](../conventions.md#optimistic-locking-version)).
 - **Status moves `draft → published ⇄ closed`.** A post is created as a draft or published; editing can publish a
   draft. A published post never returns to a draft — applicants may have seen it — so it is closed instead. Only a
@@ -231,7 +237,8 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
   `job_post_id`, with no join; the position column is the post's own title. Newest or oldest first, by
   `(created_at, id)` so offset pages neither repeat nor skip a row, served by `idx_application_job_post_id_created_at`.
   Who may list them is the post's: an administrator any post, a recruiter the posts assigned to them (`recruiter_id`),
-  a hiring manager the posts they created (`created_by`), as `JobPostAccess` decides; any other post answers `404`.
+  a hiring manager the posts they are the hiring manager of (`hiring_manager_id`, whoever created them), as
+  `JobPostAccess` decides; any other post answers `404`.
 - **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
   never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
   columns joined with `OR` would not.

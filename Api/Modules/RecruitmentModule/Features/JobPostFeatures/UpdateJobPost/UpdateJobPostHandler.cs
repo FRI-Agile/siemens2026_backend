@@ -7,10 +7,14 @@ using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
 using RecruitmentModule.Infrastructure.Entra;
+using ValidationException = Kernel.Exceptions.ValidationException;
 
 namespace RecruitmentModule.Features.JobPostFeatures.UpdateJobPost;
 
-/// <summary>A hiring manager edits a draft or published job post, and may publish a draft in the same step.</summary>
+/// <summary>
+/// A hiring manager edits a draft or published job post, and may publish a draft in the same step; an administrator may
+/// also hand the post to another hiring manager.
+/// </summary>
 public sealed record UpdateJobPostCommand : ICommand
 {
     /// <inheritdoc />
@@ -59,6 +63,19 @@ public sealed record UpdateJobPostCommand : ICommand
     [Required, NotEmpty]
     public Guid RecruiterId { get; init; }
 
+    /// <summary>
+    /// The Entra object id of a staff member with the <see cref="StaffRoles.HiringManager"/> role, the hiring manager
+    /// the position is filled for; <c>null</c> keeps the current one. Only a caller who
+    /// <see cref="NamesHiringManager"/> may change it.
+    /// </summary>
+    public Guid? HiringManagerId { get; init; }
+
+    /// <summary>
+    /// Whether the caller may name another hiring manager (an administrator). Set by the endpoint from the token, never
+    /// from the request.
+    /// </summary>
+    public bool NamesHiringManager { get; init; }
+
     /// <summary>The optimistic-locking version the caller last read.</summary>
     [Range(1, short.MaxValue)]
     public short Version { get; init; }
@@ -78,6 +95,7 @@ public sealed record UpdateJobPostResponse(
     string PaymentType,
     string EmploymentType,
     Guid RecruiterId,
+    Guid HiringManagerId,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
     short Version);
@@ -99,9 +117,22 @@ internal sealed class UpdateJobPostHandler(RecruitmentDbContext db, IStaffDirect
             throw new ConflictException(
                 "Zverejnenú pracovnú ponuku nemožno vrátiť do konceptu. Ak už nemá byť viditeľná, uzavrite ju.");
 
-        // Only a new recruiter is checked: one who has since lost the role does not block edits to the rest of the post.
-        if (command.RecruiterId != post.RecruiterId)
+        Guid hiringManagerId = command.HiringManagerId ?? post.HiringManagerId;
+        bool newHiringManager = hiringManagerId != post.HiringManagerId;
+        if (newHiringManager && !command.NamesHiringManager)
+            throw ValidationException.ForField(nameof(command.HiringManagerId),
+                "Prijímajúceho manažéra pracovnej ponuky môže zmeniť len administrátor.");
+
+        // Only a new recruiter or hiring manager is checked: one who has since lost the role does not block edits to
+        // the rest of the post.
+        bool newRecruiter = command.RecruiterId != post.RecruiterId;
+        if (newRecruiter && newHiringManager)
+            await directory.EnsureRecruiterAndHiringManagerAsync(
+                command.RecruiterId, nameof(command.RecruiterId), hiringManagerId, nameof(command.HiringManagerId), ct);
+        else if (newRecruiter)
             await directory.EnsureRecruiterAsync(command.RecruiterId, nameof(command.RecruiterId), ct);
+        else if (newHiringManager)
+            await directory.EnsureHiringManagerAsync(hiringManagerId, nameof(command.HiringManagerId), ct);
 
         post.Title = command.Title;
         post.Location = command.Location;
@@ -113,12 +144,13 @@ internal sealed class UpdateJobPostHandler(RecruitmentDbContext db, IStaffDirect
         post.PaymentType = command.PaymentType;
         post.EmploymentType = command.EmploymentType;
         post.RecruiterId = command.RecruiterId;
+        post.HiringManagerId = hiringManagerId;
         post.UpdatedBy = currentUser.RequireId();
         await db.SaveChangesAsync(ct);
 
         return new UpdateJobPostResponse(
             post.Id, post.Title, post.Location, post.Department, post.Description, post.Status,
             post.OpenPositions, post.Salary, post.PaymentType, post.EmploymentType, post.RecruiterId,
-            post.CreatedAt, post.UpdatedAt, post.Version);
+            post.HiringManagerId, post.CreatedAt, post.UpdatedAt, post.Version);
     }
 }

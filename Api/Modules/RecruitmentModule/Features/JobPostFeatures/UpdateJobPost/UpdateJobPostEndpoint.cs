@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
@@ -7,7 +8,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace RecruitmentModule.Features.JobPostFeatures.UpdateJobPost;
 
-/// <summary><c>PUT /api/v1/recruitment/job-posts/{jobPostId}</c>: a hiring manager edits a job post.</summary>
+/// <summary>
+/// <c>PUT /api/v1/recruitment/job-posts/{jobPostId}</c>: a hiring manager edits a job post; an administrator may also
+/// change its hiring manager.
+/// </summary>
 internal sealed class UpdateJobPostEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder group) =>
@@ -16,6 +20,7 @@ internal sealed class UpdateJobPostEndpoint : IEndpoint
             .MapPut("/{jobPostId:guid}", static async (
                 Guid jobPostId,
                 UpdateJobPostRequest request,
+                ClaimsPrincipal user,
                 ICommandHandler<UpdateJobPostCommand, UpdateJobPostResponse> handler,
                 CancellationToken ct) =>
             {
@@ -32,6 +37,8 @@ internal sealed class UpdateJobPostEndpoint : IEndpoint
                     PaymentType = request.PaymentType,
                     EmploymentType = request.EmploymentType,
                     RecruiterId = request.RecruiterId,
+                    HiringManagerId = request.HiringManagerId,
+                    NamesHiringManager = user.IsInRole(StaffRoles.Admin),
                     Version = request.Version,
                 };
                 return Results.Ok(await handler.HandleAsync(command, ct));
@@ -39,6 +46,6 @@ internal sealed class UpdateJobPostEndpoint : IEndpoint
             .WithName("UpdateJobPost")
             .Produces<UpdateJobPostResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status502BadGateway) // Entra refused the recruiter lookup
+            .ProducesProblem(StatusCodes.Status502BadGateway) // Entra refused the staff lookup
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 }

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ApiService.Infrastructure.ExceptionHandlers;
 using Kernel.Auth;
 using Kernel.CQRS;
@@ -25,6 +26,7 @@ namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 public class JobPostEndpointTests
 {
     private static readonly StaffMember Recruiter = new(Guid.NewGuid(), "Jana Nováková", [StaffRoles.Recruiter]);
+    private static readonly StaffMember Manager = new(Guid.NewGuid(), "Peter Horváth", [StaffRoles.HiringManager]);
 
     private static readonly object CreateBody = new
     {
@@ -54,6 +56,15 @@ public class JobPostEndpointTests
         recruiterId = Recruiter.Id,
     };
 
+    /// <summary><see cref="CreateBody"/> as <paramref name="role"/> sends it: an administrator also names the hiring manager.</summary>
+    private static JsonObject CreateBodyFor(string role)
+    {
+        JsonObject body = JsonSerializer.SerializeToNode(CreateBody)!.AsObject();
+        if (role == StaffRoles.Admin)
+            body["hiringManagerId"] = Manager.Id;
+        return body;
+    }
+
     private static async Task<WebApplication> StartHostAsync(CancellationToken ct)
     {
         string connectionString = TestDb.NewDatabase();
@@ -67,7 +78,7 @@ public class JobPostEndpointTests
         builder.Services.AddDbContext<RecruitmentDbContext>(o => o.UseNpgsql(connectionString));
         builder.Services.AddCqrsHandlers(typeof(CreateJobPostHandler).Assembly);
         builder.Services.AddCqrsDecorators();
-        builder.Services.AddSingleton<IStaffDirectory>(new FakeStaffDirectory { Staff = { Recruiter } });
+        builder.Services.AddSingleton<IStaffDirectory>(new FakeStaffDirectory { Staff = { Recruiter, Manager } });
 
         WebApplication app = builder.Build();
         app.UseExceptionHandler();
@@ -87,14 +98,12 @@ public class JobPostEndpointTests
     private static Task<HttpResponseMessage> SearchAsync(HttpClient client, string path, string json, CancellationToken ct) =>
         client.PostAsync(path, new StringContent(json, System.Text.Encoding.UTF8, "application/json"), ct);
 
-    [Theory]
-    [InlineData(StaffRoles.HiringManager)]
-    [InlineData(StaffRoles.Admin)]
-    public async Task A_hiring_manager_creates_a_draft(string role)
+    [Fact]
+    public async Task A_hiring_manager_creates_a_draft_for_themselves()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using WebApplication app = await StartHostAsync(ct);
-        using HttpClient client = As(app, role);
+        using HttpClient client = As(app, StaffRoles.HiringManager);
 
         using HttpResponseMessage response = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
 
@@ -104,10 +113,39 @@ public class JobPostEndpointTests
         Assert.Equal(Recruiter.Id, created.GetProperty("recruiterId").GetGuid());
         Assert.Equal(9.5m, created.GetProperty("salary").GetDecimal());
         Assert.Equal(EmploymentTypes.StudentWorkAgreement, created.GetProperty("employmentType").GetString());
+        Assert.Equal(Guid.Parse(StaffTokens.ObjectId), created.GetProperty("hiringManagerId").GetGuid());
 
         using IServiceScope scope = app.Services.CreateScope();
         RecruitmentDbContext db = scope.ServiceProvider.GetRequiredService<RecruitmentDbContext>();
         Assert.Equal(Guid.Parse(StaffTokens.ObjectId), (await db.JobPosts.SingleAsync(ct)).CreatedBy);
+    }
+
+    [Fact]
+    public async Task An_administrator_creates_a_draft_for_the_hiring_manager_they_name()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient client = As(app, StaffRoles.Admin);
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/job-posts", CreateBodyFor(StaffRoles.Admin), ct);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        JsonElement created = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal(Recruiter.Id, created.GetProperty("recruiterId").GetGuid());
+        Assert.Equal(Manager.Id, created.GetProperty("hiringManagerId").GetGuid());
+    }
+
+    [Fact]
+    public async Task An_administrator_who_names_no_hiring_manager_is_400()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient client = As(app, StaffRoles.Admin);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal(["HiringManagerId"], problem.GetProperty("errors").EnumerateObject().Select(e => e.Name));
     }
 
     [Fact]
@@ -204,6 +242,28 @@ public class JobPostEndpointTests
         Assert.Equal(Guid.Parse(StaffTokens.ObjectId), (await db.JobPosts.SingleAsync(ct)).UpdatedBy);
     }
 
+    [Fact]
+    public async Task Only_an_administrator_changes_the_hiring_manager()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient manager = As(app, StaffRoles.HiringManager);
+        using HttpClient admin = As(app, StaffRoles.Admin);
+        using HttpResponseMessage created = await manager.PostAsJsonAsync("/job-posts", CreateBody, ct);
+        string id = JsonDocument.Parse(await created.Content.ReadAsStringAsync(ct)).RootElement.GetProperty("id").GetString()!;
+        JsonObject edit = JsonSerializer.SerializeToNode(CreateBody)!.AsObject();
+        edit["hiringManagerId"] = Manager.Id;
+        edit["version"] = 1;
+
+        using HttpResponseMessage refused = await manager.PutAsJsonAsync($"/job-posts/{id}", edit, ct);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+
+        using HttpResponseMessage handed = await admin.PutAsJsonAsync($"/job-posts/{id}", edit, ct);
+        Assert.Equal(HttpStatusCode.OK, handed.StatusCode);
+        JsonElement edited = JsonDocument.Parse(await handed.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal(Manager.Id, edited.GetProperty("hiringManagerId").GetGuid());
+    }
+
     [Theory]
     [InlineData(StaffRoles.HiringManager)]
     [InlineData(StaffRoles.Admin)]
@@ -212,7 +272,7 @@ public class JobPostEndpointTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using WebApplication app = await StartHostAsync(ct);
         using HttpClient client = As(app, role);
-        using HttpResponseMessage created = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
+        using HttpResponseMessage created = await client.PostAsJsonAsync("/job-posts", CreateBodyFor(role), ct);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         using HttpResponseMessage response = await SearchAsync(client, "/job-posts/manage/search", """{ "statuses": ["draft"] }""", ct);

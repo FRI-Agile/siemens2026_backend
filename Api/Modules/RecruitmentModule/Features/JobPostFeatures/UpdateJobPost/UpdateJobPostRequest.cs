@@ -56,6 +56,14 @@ public sealed record UpdateJobPostRequest
     /// <example>6f1c1f0e-2d0a-4a43-9a3b-1b8f8b7a2f10</example>
     public Guid RecruiterId { get; init; }
 
+    /// <summary>
+    /// The Entra object id of a staff member with the <c>HiringManager</c> role, the hiring manager the position is
+    /// filled for (prijímajúci manažér). Listed by <c>GET /hiring-managers</c>. Left out, the post keeps its hiring
+    /// manager; only an administrator may change it.
+    /// </summary>
+    /// <example>3b7e2c55-8f0a-4d1e-9c6b-2a4f5e6d7c80</example>
+    public Guid? HiringManagerId { get; init; }
+
     /// <summary>The <c>version</c> the post had when it was read; a post changed since then is answered <c>409</c>.</summary>
     /// <example>1</example>
     public short Version { get; init; }

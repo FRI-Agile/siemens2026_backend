@@ -22,6 +22,7 @@ internal static class JobPostSeed
         PaymentType = PaymentTypes.Monthly,
         EmploymentType = employmentType,
         RecruiterId = Guid.NewGuid(),
+        HiringManagerId = Guid.NewGuid(),
         CreatedBy = Guid.NewGuid(),
     };
 

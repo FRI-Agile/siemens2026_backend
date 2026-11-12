@@ -189,6 +189,7 @@ CREATE TABLE recruitment.job_post (
     payment_type     TEXT           NOT NULL,  -- hourly / monthly / yearly wage
     employment_type  TEXT           NOT NULL,  -- typ pracovného pomeru: TPP, part-time, work agreements, ...
     recruiter_id     UUID           NOT NULL,  -- Entra oid of the responsible recruiter; logical, no FK
+    hiring_manager_id UUID          NOT NULL,  -- Entra oid of the hiring manager the position is filled for; logical, no FK
     created_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
     created_by       UUID           NOT NULL,
     updated_at       TIMESTAMPTZ,
@@ -208,6 +209,8 @@ CREATE TABLE recruitment.job_post (
 );
 -- A recruiter's own job posts.
 CREATE INDEX idx_job_post_recruiter_id ON recruitment.job_post (recruiter_id);
+-- A hiring manager's own job posts.
+CREATE INDEX idx_job_post_hiring_manager_id ON recruitment.job_post (hiring_manager_id);
 -- The job post lists' search, accent-insensitive and fuzzy on both the title and the location:
 -- `immutable_unaccent(col) ILIKE immutable_unaccent('%…%')` or pg_trgm's word similarity
 -- (`immutable_unaccent(term) <% immutable_unaccent(col)`), so "kosice" finds "Košice" and a typo still matches. One

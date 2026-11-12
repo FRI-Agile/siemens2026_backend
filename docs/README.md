@@ -10,6 +10,7 @@ New to the project? [Getting Started](getting-started.md) takes you from a fresh
 - [System Context View](architecture/system-context.md) — actors, external systems, trust boundaries and data flows.
 - [Container / Deployment Architecture](architecture/container-deployment.md) — what runs on the Azure VM, ports, networking, deployment and rollback.
 - [Identity & Access Management](architecture/iam.md) — staff sign-in with Entra ID, anonymous applicants, managed identity, secrets inventory, CI and operator access.
+- [Staff Roles & Permissions](architecture/roles-permissions.md) — what Admin, Hiring manager and Recruiter may do with job posts, candidates and staff accounts, and who moves a candidate's status.
 - [Contract Testing](architecture/contract-testing.md) — Schemathesis against the OpenAPI document.
 - [Development Architecture](architecture/development-architecture.md) — repository layout, .NET build and central packages, local development and tests.
 - [Infrastructure / Operations Architecture](architecture/infrastructure-operations-architecture.md) — environments, provisioning with Bicep, host lifecycle, patching, drift and ownership.
@@ -57,6 +58,7 @@ PlantUML sources and rendered SVGs live in [diagrams/architecture](diagrams/arch
 - [C2 VM Containers](diagrams/architecture/C2_vm_containers.svg)
 - [C3 Telemetry Pipeline](diagrams/architecture/C3_telemetry_pipeline.svg)
 - [File lifecycle](diagrams/api/file-lifecycle.svg)
+- [Candidate status](diagrams/api/application-status.svg)
 
 ## Contributing
 

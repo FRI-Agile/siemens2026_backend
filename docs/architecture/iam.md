@@ -57,9 +57,9 @@ Roles are **app roles** defined on the HealthyHires API app registration and ass
 
 | App role (value) | Who | Permissions |
 | ---------------- | --- | ----------- |
-| `Recruiter` | Recruiters (*náboroví pracovníci*), who run the hiring process | TODO — define per module |
-| `HiringManager` | Hiring managers (*prijímajúci manažéri*), for whose team a position is filled | TODO — define per module |
-| `Admin` | Administrators (*administrátori*) | Creates staff accounts (Recruitment, `POST /api/v1/recruitment/staff-users`) and lists them with their state (`GET /api/v1/recruitment/staff-users/manage`); TODO — the rest per module |
+| `Recruiter` | Recruiters (*náboroví pracovníci*), who run the hiring process | Works the candidates on the job posts assigned to them; see [Staff Roles & Permissions](roles-permissions.md) |
+| `HiringManager` | Hiring managers (*prijímajúci manažéri*), for whose team a position is filled | Creates and manages their own job posts, assigns their recruiter, reads their candidates; see [Staff Roles & Permissions](roles-permissions.md) |
+| `Admin` | Administrators (*administrátori*) | Creates staff accounts (Recruitment, `POST /api/v1/recruitment/staff-users`) and lists them with their state (`GET /api/v1/recruitment/staff-users/manage`); everything else on every post; see [Staff Roles & Permissions](roles-permissions.md) |
 
 Roles are assigned to individual users. Group-based assignment requires Entra ID P1, which a free tenant lacks.
 
@@ -194,14 +194,14 @@ The deploy user should be restricted to the deploy command (a forced command in 
 - No Azure identity is used locally: Azurite, a PostgreSQL container, ClamAV and Mailpit replace the Azure services, and secrets come from .NET user secrets or environment variables.
 - CV scoring is the exception: there is no local stand-in for the model, so a developer calls the real Azure OpenAI resource with their own Azure CLI sign-in. Bicep grants the operator Cognitive Services OpenAI User on it.
 - Staff sign-in still uses the real Entra tenant; `http://localhost:5173`, the Vite dev server, is registered as an SPA redirect URI.
-- Reading the staff list (the recruiter picker on a job post) calls Microsoft Graph as the developer's Azure CLI sign-in too: the API uses `AzureCliCredential` in Development rather than `DefaultAzureCredential`, whose managed-identity probe can hang off Azure. Any member of the tenant may read it after `az login --tenant <tenant-id>`; it needs only `Entra:ApiClientId`, which `AppHost/appsettings.json` sets.
+- Reading the staff list (the recruiter picker on a job post) calls Microsoft Graph as the developer's Azure CLI sign-in too: the API uses `AzureCliCredential` in Development rather than `DefaultAzureCredential`, whose managed-identity probe can hang off Azure. Any member of the tenant may read it after `az login --tenant <tenant-id>`; it needs only `Entra:ApiClientId`, which `AppHost/appsettings.json` sets. The credential asks for a token in `Entra:TenantId`, whatever the CLI's default tenant is, so a developer signed in to several tenants still reads the company one; without a sign-in there the picker reports that the application could not sign in to the directory.
 - Creating a staff account calls Microsoft Graph as the developer's Azure CLI sign-in, so it works only for a developer whose own Entra roles allow it (User Administrator and Application Administrator, or Global Administrator), and needs `Entra:UserDomain` as a user secret of the AppHost.
 - Test tools (Schemathesis, k6, ZAP) get an access token for a dedicated test user via the Azure CLI ([ADR-009](ADR.md#adr-009-api-testing--contract-validation--schemathesis)); Playwright signs in with a TOTP-enabled test user ([ADR-019](ADR.md#adr-019-end-to-end-testing--playwright)).
 
 ## 9. Open items
 
 - [x] The Collector authenticates to Azure Monitor with the connection string from Key Vault ([container-deployment.md §5](container-deployment.md#5-open-items)).
-- [ ] Define the permissions of `Recruiter`, `HiringManager` and `Admin` per module.
+- [x] Define the permissions of `Recruiter`, `HiringManager` and `Admin` per module: [Staff Roles & Permissions](roles-permissions.md) (Recruitment module; its own open questions are in §8).
 - [ ] Confirm the least-privilege role for sending email through ACS with a managed identity.
 - [ ] Restrict IMDS access to the API and Collector containers (§4.3).
 - [ ] Narrow the managed identity's tenant-wide Graph permissions (§4.3), e.g. by moving staff-account creation to the administrator's own delegated token.

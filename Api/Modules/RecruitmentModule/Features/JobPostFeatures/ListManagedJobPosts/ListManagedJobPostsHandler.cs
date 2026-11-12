@@ -82,6 +82,7 @@ public sealed record ManagedJobPostItem(
     string PaymentType,
     string EmploymentType,
     Guid RecruiterId,
+    Guid HiringManagerId,
     DateTimeOffset CreatedAt,
     Guid CreatedBy,
     DateTimeOffset? UpdatedAt,
@@ -111,7 +112,7 @@ internal sealed class ListManagedJobPostsHandler(RecruitmentDbContext db)
             .Take(query.Limit)
             .Select(p => new ManagedJobPostItem(
                 p.Id, p.Title, p.Location, p.Department, p.Description, p.Status, p.OpenPositions, p.Salary,
-                p.PaymentType, p.EmploymentType, p.RecruiterId, p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy,
+                p.PaymentType, p.EmploymentType, p.RecruiterId, p.HiringManagerId, p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy,
                 p.Version))
             .ToListAsync(ct);
 

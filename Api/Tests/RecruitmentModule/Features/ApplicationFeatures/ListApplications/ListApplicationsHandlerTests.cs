@@ -20,7 +20,7 @@ public class ListApplicationsHandlerTests
     private static readonly Guid Staff = Guid.NewGuid();
     private static readonly DateTimeOffset Start = new(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
 
-    private static readonly JobPostAccess Admin = new(Staff, All: true, Assigned: false, Created: false);
+    private static readonly JobPostAccess Admin = new(Staff, All: true, Assigned: false, Managed: false);
 
     private static ListApplicationsQuery Query(JobPost post, JobPostAccess? access = null) =>
         new() { JobPostId = post.Id, Access = access ?? Admin };
@@ -135,26 +135,28 @@ public class ListApplicationsHandlerTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost post = await SeedAsync(db, ct, Pipeline);
-        JobPostAccess assignedOne = new(post.RecruiterId, All: false, Assigned: true, Created: false);
-        JobPostAccess someoneElse = new(Guid.NewGuid(), All: false, Assigned: true, Created: false);
-        JobPostAccess itsCreator = new(post.CreatedBy, All: false, Assigned: true, Created: false);
+        JobPostAccess assignedOne = new(post.RecruiterId, All: false, Assigned: true, Managed: false);
+        JobPostAccess someoneElse = new(Guid.NewGuid(), All: false, Assigned: true, Managed: false);
+        JobPostAccess itsHiringManager = new(post.HiringManagerId, All: false, Assigned: true, Managed: false);
 
         Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(post, assignedOne), ct)).Total);
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, someoneElse), ct));
-        await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsCreator), ct));
+        await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsHiringManager), ct));
     }
 
     [Fact]
-    public async Task A_hiring_manager_sees_the_applicants_of_a_post_they_created_only()
+    public async Task A_hiring_manager_sees_the_applicants_of_a_post_they_are_the_hiring_manager_of_only()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost post = await SeedAsync(db, ct, Pipeline);
-        JobPostAccess creator = new(post.CreatedBy, All: false, Assigned: false, Created: true);
-        JobPostAccess anotherManager = new(Guid.NewGuid(), All: false, Assigned: false, Created: true);
-        JobPostAccess itsRecruiter = new(post.RecruiterId, All: false, Assigned: false, Created: true);
+        JobPostAccess hiringManager = new(post.HiringManagerId, All: false, Assigned: false, Managed: true);
+        JobPostAccess itsCreator = new(post.CreatedBy, All: false, Assigned: false, Managed: true);
+        JobPostAccess anotherManager = new(Guid.NewGuid(), All: false, Assigned: false, Managed: true);
+        JobPostAccess itsRecruiter = new(post.RecruiterId, All: false, Assigned: false, Managed: true);
 
-        Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(post, creator), ct)).Total);
+        Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(post, hiringManager), ct)).Total);
+        await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsCreator), ct));
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, anotherManager), ct));
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsRecruiter), ct));
     }
