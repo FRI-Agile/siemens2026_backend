@@ -24,6 +24,17 @@ export const employmentTypeLabels: Record<EmploymentType, string> = {
   self_employed: 'Živnosť',
 }
 
+/** The orders a job post list can be in; mirrors `JobPostSorts` in RecruitmentVocabulary.cs. */
+export const jobPostSorts = ['newest', 'oldest', 'relevance'] as const
+
+export type JobPostSort = (typeof jobPostSorts)[number]
+
+export const jobPostSortLabels: Record<JobPostSort, string> = {
+  newest: 'Najnovšie',
+  oldest: 'Najstaršie',
+  relevance: 'Najlepšia zhoda',
+}
+
 /** How the wage is stated; mirrors `PaymentTypes` in RecruitmentVocabulary.cs. */
 export const paymentTypes = ['monthly', 'hourly', 'yearly'] as const
 

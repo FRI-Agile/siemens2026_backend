@@ -121,6 +121,22 @@ public static class ApplicationSorts
     public const string Oldest = "oldest";
 }
 
+/// <summary>The orders a job post list can be in.</summary>
+public static class JobPostSorts
+{
+    /// <summary>Most recently created first; the default.</summary>
+    public const string Newest = "newest";
+
+    /// <summary>First created first.</summary>
+    public const string Oldest = "oldest";
+
+    /// <summary>
+    /// The best match for the search text first, which also lists posts the text only nearly matches (a typo). Needs a
+    /// search text.
+    /// </summary>
+    public const string Relevance = "relevance";
+}
+
 /// <summary>What a file submitted with an application is (<c>application_document.type</c>; Slovak codes, ADR-D009).</summary>
 /// <remarks>
 /// An application has at most one <see cref="Cv"/> and one <see cref="CoverLetter"/>, which the database enforces, and the

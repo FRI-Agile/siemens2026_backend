@@ -14,11 +14,21 @@ public sealed record ListPublishedJobPostsRequest
     /// <example>10</example>
     public int? Limit { get; init; }
 
-    /// <summary>Text the title or the location contains, ignoring case.</summary>
+    /// <summary>Text the title or the location contains, ignoring case and accents; sorted by <c>relevance</c>, also text it nearly matches (a typo).</summary>
     /// <example>Bratislava</example>
     public string? Search { get; init; }
 
-    /// <summary>Only posts with this form of employment (typ pracovného pomeru), e.g. <c>full_time</c> (TPP).</summary>
-    /// <example>full_time</example>
-    public string? EmploymentType { get; init; }
+    /// <summary>
+    /// Only posts with one of these forms of employment (typ pracovného pomeru), e.g. <c>full_time</c> (TPP); every form
+    /// when left out or empty.
+    /// </summary>
+    /// <example>["full_time", "part_time"]</example>
+    public IReadOnlyList<string>? EmploymentTypes { get; init; }
+
+    /// <summary>
+    /// <c>newest</c> first (when left out), <c>oldest</c> first, or <c>relevance</c>: the best match for <c>search</c>
+    /// first, which also lists posts it only nearly matches (a typo) and needs a search text.
+    /// </summary>
+    /// <example>newest</example>
+    public string? Sort { get; init; }
 }

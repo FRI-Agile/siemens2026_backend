@@ -96,8 +96,8 @@ change both together.
 | ---- | ------- | ---- | ------- |
 | *(PK)* | `(id)` | btree | Lookup by id |
 | `idx_job_post_recruiter_id` | `(recruiter_id)` | btree | A recruiter's own job posts |
-| `idx_job_post_title` | `(title public.gin_trgm_ops)` | GIN trigram | The lists' search on the title |
-| `idx_job_post_location` | `(location public.gin_trgm_ops)` | GIN trigram | The lists' search on the location |
+| `idx_job_post_title` | `(recruitment.immutable_unaccent(title) public.gin_trgm_ops)` | GIN trigram | The lists' fuzzy search on the title: unaccented `ILIKE` and word similarity (`<%`) |
+| `idx_job_post_location` | `(recruitment.immutable_unaccent(location) public.gin_trgm_ops)` | GIN trigram | The lists' fuzzy search on the location: unaccented `ILIKE` and word similarity (`<%`) |
 
 **Triggers**
 
@@ -118,17 +118,30 @@ change both together.
 - **Lengths are the application's.** The commands cap `title` at 200 characters, `location` and `department` at
   100, `description` at 3 000 and `open_positions` at 1000; the table only guards what must never be stored (blank
   text, no positions, no wage). `salary` fits `NUMERIC(10,2)`: at most 99 999 999.99, with 2 decimal places.
-- **Public reads see published rows only.** `POST /job-posts/search` (a read with a body, offset pages, newest first
-  by `created_at`, then `id`) and `GET /job-posts/{id}` are anonymous and filter on `status = 'published'`; a draft or
-  closed post answers `404` like a missing post. They never return `recruiter_id` or the audit columns.
+- **Public reads see published rows only.** `POST /job-posts/search` (a read with a body, offset pages, sorted as
+  below, optionally filtered by `employmentTypes`) and `GET /job-posts/{id}` are anonymous and filter on
+  `status = 'published'`; a draft or closed post answers `404` like a missing post. They never return `recruiter_id` or
+  the audit columns.
 - **Staff see every row.** `POST /job-posts/manage/search` (hiring managers and administrators) lists every status,
-  optionally filtered by `status`, `employmentType` and the same search, in the same order. It returns every column, `version`
-  included, so the edit, close and reopen features can be driven from it.
-- **Search uses the trigram indexes.** Both lists search `title ILIKE '%…%' OR location ILIKE '%…%'`
-  (`JobPostQueryExtensions.MatchingSearch`). The [search-index convention](../conventions.md#search-indexes) gives
-  each column its own trigram GIN index, which the planner combines with a `BitmapOr`; one index over both columns
-  would only serve a query written against the same expression. A term under 3 characters has no trigram to look up
-  and still scans. `JobPostQueryExtensionsTests` pins the query to both indexes.
+  optionally filtered by `statuses`, and takes the same `employmentTypes`, search and sorts. It returns every column,
+  `version` included, so the edit, close and reopen features can be driven from it.
+- **The filters are lists.** `statuses` and `employmentTypes` each match a post with any of their values; empty or
+  left out, they match every post. An unknown value is a `400`.
+- **Both lists sort by `sort`: `newest` (the default), `oldest` or `relevance`.** `newest` and `oldest` order by
+  `created_at`, then `id`. `relevance` needs a search text (`400` without one; the app switches to it while a search is
+  typed) and orders by `GREATEST(strict_word_similarity(term, title), strict_word_similarity(term, location))`
+  descending, newest first among equals (`JobPostQueryExtensions.SortedBy`). Strict word similarity keeps to word
+  boundaries, so a typo of "Skladník" ranks that title above "Vedúci skladníkov"; the ranking is computed per matched
+  row, not served by an index.
+- **Search is accent-insensitive, fuzzy under `relevance`, and uses the trigram indexes.** Both lists match the title
+  or the location by `immutable_unaccent(col) ILIKE immutable_unaccent('%…%')`, so "kosice" finds "Košice"; sorted by
+  `relevance` they also match by `immutable_unaccent(term) <% immutable_unaccent(col)` (pg_trgm word similarity,
+  default threshold 0.6), so a typo like "elektrikár udrzbz" still finds "Elektrikár údržby"
+  (`JobPostQueryExtensions.MatchingSearch`). The
+  [search-index convention](../conventions.md#search-indexes) gives each column its own trigram GIN index over the
+  unaccented text, which the planner combines with a `BitmapOr`; a query that drops the `immutable_unaccent` wrapper
+  cannot use them. A term under 3 characters has no trigram to look up and still scans.
+  `JobPostQueryExtensionsTests` pins the query to both indexes.
 
 ## `application`
 

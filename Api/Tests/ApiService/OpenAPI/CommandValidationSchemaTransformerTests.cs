@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using ApiService.OpenAPI;
+using Kernel.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
@@ -21,6 +22,9 @@ public sealed record ProbeCommand
     [AllowedValues(null, "newest", "oldest")]
     public string? Sort { get; init; }
 
+    [AllowedItems("draft", "published")]
+    public IReadOnlyList<string> Statuses { get; init; } = [];
+
     [Required, StringLength(32, MinimumLength = 2)]
     public string Name { get; init; } = default!;
 }
@@ -31,6 +35,7 @@ public sealed record ProbeRequest
     public decimal Quantity { get; init; }
     public int Bounded { get; init; }
     public string? Sort { get; init; }
+    public IReadOnlyList<string>? Statuses { get; init; }
     public string Name { get; init; } = default!;
 }
 
@@ -105,6 +110,16 @@ public class CommandValidationSchemaTransformerTests
         IOpenApiSchema sort = (await ProbeSchemaAsync(Ct))["sort"];
 
         Assert.Equal(["newest", "oldest"], sort.Enum!.Select(v => v!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task A_multi_select_value_set_becomes_the_items_enum()
+    {
+        IDictionary<string, IOpenApiSchema> properties = await ProbeSchemaAsync(Ct);
+
+        IOpenApiSchema statuses = properties["statuses"];
+        Assert.Null(statuses.Enum);
+        Assert.Equal(["draft", "published"], statuses.Items!.Enum!.Select(v => v!.GetValue<string>()));
     }
 
     [Fact]

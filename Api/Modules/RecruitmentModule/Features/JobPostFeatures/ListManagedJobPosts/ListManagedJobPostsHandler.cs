@@ -1,14 +1,16 @@
 using System.ComponentModel.DataAnnotations;
 using Kernel.CQRS;
+using Kernel.Validation;
 using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
+using EmploymentTypeCodes = RecruitmentModule.Domain.EmploymentTypes;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ListManagedJobPosts;
 
 /// <summary>
-/// One page of every job post, whatever its status, newest first, optionally filtered; for staff managing them.
+/// One page of every job post, whatever its status, newest first unless sorted otherwise, optionally filtered; for staff managing them.
 /// The attributes are the rules: the request schema copies them, and the query validation decorator enforces them.
 /// </summary>
 public sealed record ListManagedJobPostsQuery
@@ -30,20 +32,31 @@ public sealed record ListManagedJobPostsQuery
     [Range(1, MaxLimit)]
     public int Limit { get; init; } = DefaultLimit;
 
-    /// <summary>Text the title or the location contains, ignoring case; every post when <c>null</c>.</summary>
+    /// <summary>
+    /// Text the title or the location contains, ignoring case and accents, or under <see cref="JobPostSorts.Relevance"/>
+    /// nearly matches (a typo); every post when <c>null</c>.
+    /// </summary>
     [StringLength(MaxSearchLength)]
     public string? Search { get; init; }
 
-    /// <summary>Only posts with this status; every status when <c>null</c>.</summary>
-    [AllowedValues(JobPostStatuses.Draft, JobPostStatuses.Published, JobPostStatuses.Closed, null)]
-    public string? Status { get; init; }
+    /// <summary>Only posts in one of these statuses; every status when empty.</summary>
+    [AllowedItems(JobPostStatuses.Draft, JobPostStatuses.Published, JobPostStatuses.Closed)]
+    public IReadOnlyList<string> Statuses { get; init; } = [];
 
-    /// <summary>Only posts with this employment type; every type when <c>null</c>.</summary>
-    [AllowedValues(
-        EmploymentTypes.FullTime, EmploymentTypes.PartTime, EmploymentTypes.FixedTerm,
-        EmploymentTypes.WorkPerformanceAgreement, EmploymentTypes.WorkActivityAgreement,
-        EmploymentTypes.StudentWorkAgreement, EmploymentTypes.SelfEmployed, null)]
-    public string? EmploymentType { get; init; }
+    /// <summary>Only posts with one of these employment types; every type when empty.</summary>
+    [AllowedItems(
+        EmploymentTypeCodes.FullTime, EmploymentTypeCodes.PartTime, EmploymentTypeCodes.FixedTerm,
+        EmploymentTypeCodes.WorkPerformanceAgreement, EmploymentTypeCodes.WorkActivityAgreement,
+        EmploymentTypeCodes.StudentWorkAgreement, EmploymentTypeCodes.SelfEmployed)]
+    public IReadOnlyList<string> EmploymentTypes { get; init; } = [];
+
+    /// <summary>
+    /// <see cref="JobPostSorts.Newest"/> first (the default), <see cref="JobPostSorts.Oldest"/> first, or
+    /// <see cref="JobPostSorts.Relevance"/>: the best match for <see cref="Search"/> first, which also lists posts it only
+    /// nearly matches and needs a search text.
+    /// </summary>
+    [AllowedValues(JobPostSorts.Newest, JobPostSorts.Oldest, JobPostSorts.Relevance)]
+    public string Sort { get; init; } = JobPostSorts.Newest;
 }
 
 /// <summary>A page of job posts and how many match in total.</summary>
@@ -80,18 +93,20 @@ internal sealed class ListManagedJobPostsHandler(RecruitmentDbContext db)
 {
     public async Task<ListManagedJobPostsResponse> HandleAsync(ListManagedJobPostsQuery query, CancellationToken ct = default)
     {
-        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().MatchingSearch(query.Search);
+        JobPostQueryExtensions.EnsureSortFits(query.Sort, query.Search);
 
-        if (query.Status is not null)
-            posts = posts.Where(p => p.Status == query.Status);
+        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().MatchingSearch(query.Search, query.Sort);
 
-        if (query.EmploymentType is not null)
-            posts = posts.Where(p => p.EmploymentType == query.EmploymentType);
+        if (query.Statuses.Count > 0)
+            posts = posts.Where(p => query.Statuses.Contains(p.Status));
+
+        if (query.EmploymentTypes.Count > 0)
+            posts = posts.Where(p => query.EmploymentTypes.Contains(p.EmploymentType));
 
         int total = await posts.CountAsync(ct);
 
         List<ManagedJobPostItem> items = await posts
-            .NewestFirst()
+            .SortedBy(query.Sort, query.Search)
             .Skip(query.Offset)
             .Take(query.Limit)
             .Select(p => new ManagedJobPostItem(

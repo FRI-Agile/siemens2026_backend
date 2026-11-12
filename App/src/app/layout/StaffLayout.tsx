@@ -14,6 +14,9 @@ const useStyles = makeStyles({
   root: {
     minHeight: '100vh',
     backgroundColor: '#F1F3F5',
+    // What a page's own sticky bar needs to sit under the header and hide what scrolls beneath it.
+    '--app-header-height': '72px',
+    '--app-background': '#F1F3F5',
   },
   header: {
     position: 'sticky',

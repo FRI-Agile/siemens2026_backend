@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ApiError, request } from '../../shared/api/http.ts'
-import type { EmploymentType, PaymentType } from './vocabulary.ts'
+import type { EmploymentType, JobPostSort, PaymentType } from './vocabulary.ts'
 
 // The public job post reads. Anonymous, so nothing here may import the staff auth (ADR-F004).
 // TODO: replace the hand-written types with the generated OpenAPI client (ADR-F005).
@@ -38,7 +38,10 @@ export interface PublishedJobPostFilter {
   offset: number
   limit: number
   search?: string
-  employmentType?: EmploymentType
+  /** Any of these; every type when empty or left out. */
+  employmentTypes?: readonly EmploymentType[]
+  /** `relevance` (the best match, forgiving a typo) needs a `search`; the API sorts `newest` first when left out. */
+  sort?: JobPostSort
 }
 
 /** One page of the published job posts, filtered on the server. */
@@ -55,7 +58,8 @@ export function usePublishedJobPosts(filter: PublishedJobPostFilter) {
           offset: filter.offset,
           limit: filter.limit,
           search: filter.search || undefined,
-          employmentType: filter.employmentType,
+          employmentTypes: filter.employmentTypes,
+          sort: filter.sort,
         }),
         signal,
       }),

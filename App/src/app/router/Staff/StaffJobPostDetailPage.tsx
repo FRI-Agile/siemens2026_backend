@@ -153,8 +153,7 @@ export function StaffJobPostDetailPage() {
   const [editing, setEditing] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const canManage =
-    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ??
-    false
+    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ?? false
   const canEditRecruiter =
     me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ?? false
 
@@ -166,10 +165,7 @@ export function StaffJobPostDetailPage() {
     formState: { errors },
   } = useForm<EditableValues>({
     resolver: zodResolver(jobPostFormSchema),
-    values: useMemo(
-      () => (post ? getFormValues(post) : undefined),
-      [post],
-    ),
+    values: useMemo(() => (post ? getFormValues(post) : undefined), [post]),
   })
   const formValues = useWatch({ control })
 
@@ -181,7 +177,9 @@ export function StaffJobPostDetailPage() {
           <ArrowLeftRegular /> Späť na pracovné ponuky
         </Link>
         <MessageBar intent="error">
-          <MessageBarBody>Pracovnú ponuku sa nepodarilo načítať.</MessageBarBody>
+          <MessageBarBody>
+            Pracovnú ponuku sa nepodarilo načítať.
+          </MessageBarBody>
         </MessageBar>
       </main>
     )
@@ -275,7 +273,9 @@ export function StaffJobPostDetailPage() {
           <Field label="Typ úväzku" required {...fieldError('employmentType')}>
             <Select disabled={!editing} {...register('employmentType')}>
               {employmentTypes.map((type) => (
-                <option key={type} value={type}>{employmentTypeLabels[type]}</option>
+                <option key={type} value={type}>
+                  {employmentTypeLabels[type]}
+                </option>
               ))}
             </Select>
           </Field>
@@ -291,16 +291,26 @@ export function StaffJobPostDetailPage() {
               value={String(editing ? formValues.salary : post.salary)}
             />
           </Field>
-          <Field label="Frekvencia vyplácania" required {...fieldError('paymentType')}>
+          <Field
+            label="Frekvencia vyplácania"
+            required
+            {...fieldError('paymentType')}
+          >
             <Select disabled={!editing} {...register('paymentType')}>
               {paymentTypes.map((type) => (
-                <option key={type} value={type}>{paymentTypeLabels[type]}</option>
+                <option key={type} value={type}>
+                  {paymentTypeLabels[type]}
+                </option>
               ))}
             </Select>
           </Field>
         </div>
         <div className={styles.row}>
-          <Field label="Počet otvorených miest" required {...fieldError('openPositions')}>
+          <Field
+            label="Počet otvorených miest"
+            required
+            {...fieldError('openPositions')}
+          >
             <Input
               {...register('openPositions', { valueAsNumber: true })}
               type="number"
@@ -318,18 +328,28 @@ export function StaffJobPostDetailPage() {
               value={editing ? formValues.recruiterId : post.recruiterId}
             >
               {recruiters.data?.map((recruiter) => (
-                <option key={recruiter.id} value={recruiter.id}>{recruiter.displayName}</option>
+                <option key={recruiter.id} value={recruiter.id}>
+                  {recruiter.displayName}
+                </option>
               ))}
             </Select>
           </Field>
         </div>
-        <Field label="Opis pracovnej pozície" required {...fieldError('description')}>
+        <Field
+          label="Opis pracovnej pozície"
+          required
+          {...fieldError('description')}
+        >
           <Textarea rows={7} disabled={!editing} {...register('description')} />
         </Field>
         {canManage && post.status !== 'closed' && (
           <div className={styles.actions}>
             {!editing && (
-              <Button type="button" onClick={() => setEditing(true)} disabled={busy}>
+              <Button
+                type="button"
+                onClick={() => setEditing(true)}
+                disabled={busy}
+              >
                 Upraviť
               </Button>
             )}
@@ -358,8 +378,25 @@ export function StaffJobPostDetailPage() {
                 onClick={() =>
                   runCommand(() =>
                     update.mutate(
-                      { id: post.id, title: post.title, location: post.location, department: post.department, description: post.description, status: 'published', openPositions: post.openPositions, salary: post.salary, paymentType: post.paymentType, employmentType: post.employmentType, recruiterId: post.recruiterId, version: post.version },
-                      { onSuccess: () => navigate('/staff/jobs'), onError: (commandError) => setFailure(problemMessage(commandError)) },
+                      {
+                        id: post.id,
+                        title: post.title,
+                        location: post.location,
+                        department: post.department,
+                        description: post.description,
+                        status: 'published',
+                        openPositions: post.openPositions,
+                        salary: post.salary,
+                        paymentType: post.paymentType,
+                        employmentType: post.employmentType,
+                        recruiterId: post.recruiterId,
+                        version: post.version,
+                      },
+                      {
+                        onSuccess: () => navigate('/staff/jobs'),
+                        onError: (commandError) =>
+                          setFailure(problemMessage(commandError)),
+                      },
                     ),
                   )
                 }
@@ -368,7 +405,22 @@ export function StaffJobPostDetailPage() {
               </Button>
             )}
             {post.status === 'published' && !editing && (
-              <Button type="button" disabled={busy} onClick={() => runCommand(() => close.mutate({ jobPostId: post.id, version: post.version }, { onSuccess: () => navigate('/staff/jobs'), onError: (commandError) => setFailure(problemMessage(commandError)) }))}>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  runCommand(() =>
+                    close.mutate(
+                      { jobPostId: post.id, version: post.version },
+                      {
+                        onSuccess: () => navigate('/staff/jobs'),
+                        onError: (commandError) =>
+                          setFailure(problemMessage(commandError)),
+                      },
+                    ),
+                  )
+                }
+              >
                 Uzavrieť
               </Button>
             )}
@@ -376,7 +428,23 @@ export function StaffJobPostDetailPage() {
         )}
         {canManage && post.status === 'closed' && (
           <div className={styles.actions}>
-            <Button type="button" appearance="primary" disabled={busy} onClick={() => runCommand(() => reopen.mutate({ jobPostId: post.id, version: post.version }, { onSuccess: () => navigate('/staff/jobs'), onError: (commandError) => setFailure(problemMessage(commandError)) }))}>
+            <Button
+              type="button"
+              appearance="primary"
+              disabled={busy}
+              onClick={() =>
+                runCommand(() =>
+                  reopen.mutate(
+                    { jobPostId: post.id, version: post.version },
+                    {
+                      onSuccess: () => navigate('/staff/jobs'),
+                      onError: (commandError) =>
+                        setFailure(problemMessage(commandError)),
+                    },
+                  ),
+                )
+              }
+            >
               Znovu otvoriť
             </Button>
           </div>

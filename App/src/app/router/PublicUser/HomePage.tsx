@@ -122,13 +122,10 @@ export function HomePage() {
             alt="Healthy Hires"
           />
           <p className={styles.eyebrow}>Práca, ktorá dáva zmysel</p>
-          <h1 className={styles.heading}>
-            Nájdite miesto, kde môžete rásť.
-          </h1>
+          <h1 className={styles.heading}>Nájdite miesto, kde môžete rásť.</h1>
           <p className={styles.description}>
             Objavte pracovné príležitosti v HealthyHires a pridajte sa k tímu,
-            ktorý tvorí lepšiu budúcnosť. Bez registrácie a zbytočných
-            prekážok.
+            ktorý tvorí lepšiu budúcnosť. Bez registrácie a zbytočných prekážok.
           </p>
           <Button
             as="a"
@@ -160,8 +157,8 @@ export function HomePage() {
         <article className={styles.detail}>
           <h2 className={styles.detailTitle}>Váš ďalší krok</h2>
           <p className={styles.detailText}>
-            Pripravte si životopis a motivačný list. Tešíme sa, že sa
-            dozvieme viac o vás.
+            Pripravte si životopis a motivačný list. Tešíme sa, že sa dozvieme
+            viac o vás.
           </p>
         </article>
       </section>

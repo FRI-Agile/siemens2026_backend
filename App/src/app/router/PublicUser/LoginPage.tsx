@@ -87,16 +87,8 @@ export function LoginPage() {
         <p className={styles.description}>
           Ak chcete pokračovať, prihláste sa pomocou firemného konta Microsoft.
         </p>
-        <Button
-          as="a"
-          href="/staff"
-          className={styles.signInButton}
-        >
-          <img
-            className={styles.microsoftLogo}
-            src="/ms_logo_mid.png"
-            alt=""
-          />
+        <Button as="a" href="/staff" className={styles.signInButton}>
+          <img className={styles.microsoftLogo} src="/ms_logo_mid.png" alt="" />
           <span>Prihláste sa pomocou Microsoftu -&gt;</span>
         </Button>
         <p className={styles.footer}>

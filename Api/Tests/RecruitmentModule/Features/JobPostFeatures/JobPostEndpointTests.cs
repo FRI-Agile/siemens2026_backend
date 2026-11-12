@@ -215,7 +215,7 @@ public class JobPostEndpointTests
         using HttpResponseMessage created = await client.PostAsJsonAsync("/job-posts", CreateBody, ct);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
-        using HttpResponseMessage response = await SearchAsync(client, "/job-posts/manage/search", """{ "status": "draft" }""", ct);
+        using HttpResponseMessage response = await SearchAsync(client, "/job-posts/manage/search", """{ "statuses": ["draft"] }""", ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         JsonElement page = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
@@ -241,7 +241,8 @@ public class JobPostEndpointTests
     }
 
     [Theory]
-    [InlineData("""{ "status": "archived" }""")]
+    [InlineData("""{ "statuses": ["draft", "archived"] }""")]
+    [InlineData("""{ "statuses": "draft" }""")]
     [InlineData("""{ "limit": 101 }""")]
     public async Task An_unknown_status_or_out_of_range_paging_in_the_managed_list_is_400(string body)
     {
@@ -300,7 +301,8 @@ public class JobPostEndpointTests
     [InlineData("""{ "limit": 0 }""")]
     [InlineData("""{ "limit": 101 }""")]
     [InlineData("""{ "offset": -1 }""")]
-    [InlineData("""{ "employmentType": "TPP" }""")]
+    [InlineData("""{ "employmentTypes": ["TPP"] }""")]
+    [InlineData("""{ "employmentTypes": [null] }""")]
     public async Task Out_of_range_paging_or_an_unknown_type_is_400(string body)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;

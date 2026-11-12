@@ -37,7 +37,7 @@ public class ListManagedJobPostsHandlerTests
     [InlineData(JobPostStatuses.Draft)]
     [InlineData(JobPostStatuses.Published)]
     [InlineData(JobPostStatuses.Closed)]
-    public async Task Filters_by_status(string status)
+    public async Task Filters_by_one_status(string status)
     {
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost[] posts =
@@ -48,10 +48,26 @@ public class ListManagedJobPostsHandlerTests
         ];
         await JobPostSeed.AddAsync(db, TestContext.Current.CancellationToken, posts);
 
-        ListManagedJobPostsResponse response = await ListAsync(db, new ListManagedJobPostsQuery { Status = status });
+        ListManagedJobPostsResponse response = await ListAsync(db, new ListManagedJobPostsQuery { Statuses = [status] });
 
         Assert.Equal([posts.Single(p => p.Status == status).Id], response.Items.Select(i => i.Id));
         Assert.Equal(1, response.Total);
+    }
+
+    [Fact]
+    public async Task Filters_by_several_statuses_counting_only_those()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost draft = JobPostSeed.Post("A", JobPostStatuses.Draft);
+        JobPost published = JobPostSeed.Post("B", JobPostStatuses.Published);
+        JobPost closed = JobPostSeed.Post("C", JobPostStatuses.Closed);
+        await JobPostSeed.AddAsync(db, TestContext.Current.CancellationToken, draft, published, closed);
+
+        ListManagedJobPostsResponse response = await ListAsync(
+            db, new ListManagedJobPostsQuery { Statuses = [JobPostStatuses.Draft, JobPostStatuses.Closed] });
+
+        Assert.Equal([closed.Id, draft.Id], response.Items.Select(i => i.Id));
+        Assert.Equal(2, response.Total);
     }
 
     [Fact]
@@ -79,10 +95,39 @@ public class ListManagedJobPostsHandlerTests
         ListManagedJobPostsResponse response = await ListAsync(db, new ListManagedJobPostsQuery
         {
             Search = "SKLAD",
-            EmploymentType = EmploymentTypes.StudentWorkAgreement,
+            EmploymentTypes = [EmploymentTypes.StudentWorkAgreement],
         });
 
         Assert.Equal([match.Id], response.Items.Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task Sorts_oldest_first_or_by_relevance_with_a_typo_forgiven()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost exact = JobPostSeed.Post("Skladník", JobPostStatuses.Draft);
+        JobPost partial = JobPostSeed.Post("Vedúci skladníkov a logistiky", JobPostStatuses.Closed);
+        await JobPostSeed.AddAsync(db, TestContext.Current.CancellationToken, exact, partial);
+
+        ListManagedJobPostsResponse oldest = await ListAsync(db, new ListManagedJobPostsQuery { Sort = JobPostSorts.Oldest });
+        ListManagedJobPostsResponse typoNewest = await ListAsync(db, new ListManagedJobPostsQuery { Search = "skladnjk" });
+        ListManagedJobPostsResponse typoRelevance = await ListAsync(
+            db, new ListManagedJobPostsQuery { Search = "skladnjk", Sort = JobPostSorts.Relevance });
+
+        Assert.Equal([exact.Id, partial.Id], oldest.Items.Select(i => i.Id));
+        Assert.Empty(typoNewest.Items);
+        Assert.Equal(exact.Id, typoRelevance.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task Relevance_without_a_search_text_is_refused()
+    {
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+
+        ValidationException error = await Assert.ThrowsAsync<ValidationException>(
+            () => ListAsync(db, new ListManagedJobPostsQuery { Sort = JobPostSorts.Relevance }));
+
+        Assert.Equal([nameof(ListManagedJobPostsQuery.Sort)], error.Errors.Keys);
     }
 
     [Fact]
@@ -94,12 +139,14 @@ public class ListManagedJobPostsHandlerTests
             Offset = -1,
             Limit = ListManagedJobPostsQuery.MaxLimit + 1,
             Search = new string('a', ListManagedJobPostsQuery.MaxSearchLength + 1),
-            EmploymentType = "TPP",
+            EmploymentTypes = ["TPP"],
+            Sort = "best",
         });
 
         Assert.Equal(
             new[] { nameof(ListManagedJobPostsQuery.Offset), nameof(ListManagedJobPostsQuery.Limit),
-                nameof(ListManagedJobPostsQuery.Search), nameof(ListManagedJobPostsQuery.EmploymentType) }.Order(),
+                nameof(ListManagedJobPostsQuery.Search), nameof(ListManagedJobPostsQuery.EmploymentTypes),
+                nameof(ListManagedJobPostsQuery.Sort) }.Order(),
             errors!.Keys.Order());
         Assert.Equal(["Hodnota musí byť aspoň 0."], errors[nameof(ListManagedJobPostsQuery.Offset)]);
     }
@@ -109,15 +156,18 @@ public class ListManagedJobPostsHandlerTests
     {
         Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { Limit = 0 }));
         Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { Offset = -1 }));
-        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { EmploymentType = "TPP" }));
+        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { EmploymentTypes = [EmploymentTypes.FullTime, "TPP"] }));
+        Assert.False(CommandValidation.IsValid(new ListManagedJobPostsQuery { Sort = "best" }));
         Assert.True(CommandValidation.IsValid(new ListManagedJobPostsQuery()));
     }
 
     [Fact]
     public void An_unknown_status_is_refused()
     {
-        IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(new ListManagedJobPostsQuery { Status = "archived" });
+        IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(
+            new ListManagedJobPostsQuery { Statuses = [JobPostStatuses.Draft, "archived"] });
 
-        Assert.Equal([nameof(ListManagedJobPostsQuery.Status)], errors!.Keys);
+        Assert.Equal([nameof(ListManagedJobPostsQuery.Statuses)], errors!.Keys);
+        Assert.Equal(["Zvoľte len z povolených hodnôt."], errors[nameof(ListManagedJobPostsQuery.Statuses)]);
     }
 }

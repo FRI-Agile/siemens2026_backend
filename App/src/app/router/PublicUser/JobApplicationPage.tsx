@@ -213,10 +213,7 @@ export function JobApplicationPage() {
   ) {
     const nextFiles = Array.from(selectedFiles ?? [])
     const existingFiles = Object.values(files).flat()
-    if (
-      multiple &&
-      (files[documentType]?.length ?? 0) + nextFiles.length > 3
-    ) {
+    if (multiple && (files[documentType]?.length ?? 0) + nextFiles.length > 3) {
       setFileErrors((current) => ({
         ...current,
         [documentType]: 'Môžete vybrať najviac 3 ostatné dokumenty.',
@@ -279,10 +276,7 @@ export function JobApplicationPage() {
       nextErrors.firstName = 'Meno musí mať 1 až 100 znakov.'
     if (lastName.length < 1 || lastName.length > 100)
       nextErrors.lastName = 'Priezvisko musí mať 1 až 100 znakov.'
-    if (
-      email.length > 254 ||
-      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
-    )
+    if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
       nextErrors.email = 'Zadajte platnú e-mailovú adresu.'
     if (phone && !/^\+[1-9][0-9]{6,14}$/.test(phone))
       nextErrors.phoneNumber =
@@ -322,7 +316,8 @@ export function JobApplicationPage() {
 
   async function uploadFile(file: File): Promise<string> {
     const contentType = documentContentType(file)
-    if (!contentType) throw new Error(`Typ súboru ${file.name} nie je povolený.`)
+    if (!contentType)
+      throw new Error(`Typ súboru ${file.name} nie je povolený.`)
     const intent = await request<UploadIntent>('/api/v1/files/uploads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -340,7 +335,9 @@ export function JobApplicationPage() {
       body: file,
     })
     if (!response.ok) {
-      throw new Error(`Nahrávanie súboru ${file.name} zlyhalo (${response.status}).`)
+      throw new Error(
+        `Nahrávanie súboru ${file.name} zlyhalo (${response.status}).`,
+      )
     }
     return intent.fileId
   }
@@ -432,23 +429,56 @@ export function JobApplicationPage() {
           }}
         >
           <section className={styles.section}>
-            <h2 className={styles.sectionHeading}>Základné informácie o uchádzačovi</h2>
+            <h2 className={styles.sectionHeading}>
+              Základné informácie o uchádzačovi
+            </h2>
             <div className={styles.fields}>
               <Field label="Meno" required>
-                <Input className={styles.input} name="firstName" placeholder="Zadajte meno" required />
-                {fieldErrors.firstName && <Text className={styles.error}>{fieldErrors.firstName}</Text>}
+                <Input
+                  className={styles.input}
+                  name="firstName"
+                  placeholder="Zadajte meno"
+                  required
+                />
+                {fieldErrors.firstName && (
+                  <Text className={styles.error}>{fieldErrors.firstName}</Text>
+                )}
               </Field>
               <Field label="Priezvisko" required>
-                <Input className={styles.input} name="lastName" placeholder="Zadajte priezvisko" required />
-                {fieldErrors.lastName && <Text className={styles.error}>{fieldErrors.lastName}</Text>}
+                <Input
+                  className={styles.input}
+                  name="lastName"
+                  placeholder="Zadajte priezvisko"
+                  required
+                />
+                {fieldErrors.lastName && (
+                  <Text className={styles.error}>{fieldErrors.lastName}</Text>
+                )}
               </Field>
               <Field label="E-mail" required>
-                <Input className={styles.input} name="email" type="email" placeholder="Zadajte e-mail" required />
-                {fieldErrors.email && <Text className={styles.error}>{fieldErrors.email}</Text>}
+                <Input
+                  className={styles.input}
+                  name="email"
+                  type="email"
+                  placeholder="Zadajte e-mail"
+                  required
+                />
+                {fieldErrors.email && (
+                  <Text className={styles.error}>{fieldErrors.email}</Text>
+                )}
               </Field>
               <Field label="Telefónne číslo">
-                <Input className={styles.input} name="phoneNumber" type="tel" placeholder="+421 ..." />
-                {fieldErrors.phoneNumber && <Text className={styles.error}>{fieldErrors.phoneNumber}</Text>}
+                <Input
+                  className={styles.input}
+                  name="phoneNumber"
+                  type="tel"
+                  placeholder="+421 ..."
+                />
+                {fieldErrors.phoneNumber && (
+                  <Text className={styles.error}>
+                    {fieldErrors.phoneNumber}
+                  </Text>
+                )}
               </Field>
             </div>
           </section>
@@ -459,7 +489,9 @@ export function JobApplicationPage() {
                 <label className={styles.upload} key={type}>
                   <Text weight="semibold">{label}</Text>
                   <DocumentAddRegular fontSize={28} />
-                  <Text size={200}>DOC, DOCX, PDF, JPG alebo PNG (max. 10 MB)</Text>
+                  <Text size={200}>
+                    DOC, DOCX, PDF, JPG alebo PNG (max. 10 MB)
+                  </Text>
                   <input
                     className={styles.fileInput}
                     type="file"
@@ -494,13 +526,17 @@ export function JobApplicationPage() {
                       ))}
                     </div>
                   )}
-                  {fileErrors[type] && <Text className={styles.error}>{fileErrors[type]}</Text>}
+                  {fileErrors[type] && (
+                    <Text className={styles.error}>{fileErrors[type]}</Text>
+                  )}
                 </label>
               ))}
             </div>
           </section>
           <div className={styles.actions}>
-            {submitError && <Text className={styles.submitError}>{submitError}</Text>}
+            {submitError && (
+              <Text className={styles.submitError}>{submitError}</Text>
+            )}
             <Button type="submit" appearance="primary" disabled={isSubmitting}>
               {isSubmitting ? 'Odosielanie...' : 'Odoslať'}
             </Button>

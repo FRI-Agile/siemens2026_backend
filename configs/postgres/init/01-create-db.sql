@@ -208,10 +208,14 @@ CREATE TABLE recruitment.job_post (
 );
 -- A recruiter's own job posts.
 CREATE INDEX idx_job_post_recruiter_id ON recruitment.job_post (recruiter_id);
--- The job post lists' search, `title ILIKE '%…%' OR location ILIKE '%…%'`: one trigram index per column, which the
--- planner combines for the OR. A b-tree cannot serve a pattern with a leading wildcard.
-CREATE INDEX idx_job_post_title ON recruitment.job_post USING gin (title public.gin_trgm_ops);
-CREATE INDEX idx_job_post_location ON recruitment.job_post USING gin (location public.gin_trgm_ops);
+-- The job post lists' search, accent-insensitive and fuzzy on both the title and the location:
+-- `immutable_unaccent(col) ILIKE immutable_unaccent('%…%')` or pg_trgm's word similarity
+-- (`immutable_unaccent(term) <% immutable_unaccent(col)`), so "kosice" finds "Košice" and a typo still matches. One
+-- trigram index per column, which the planner combines for the OR. A b-tree cannot serve a leading wildcard.
+CREATE INDEX idx_job_post_title
+    ON recruitment.job_post USING gin (recruitment.immutable_unaccent(title) public.gin_trgm_ops);
+CREATE INDEX idx_job_post_location
+    ON recruitment.job_post USING gin (recruitment.immutable_unaccent(location) public.gin_trgm_ops);
 CREATE TRIGGER trg_job_post_set_audit
     BEFORE UPDATE ON recruitment.job_post
     FOR EACH ROW EXECUTE FUNCTION recruitment.set_audit_fields();

@@ -1,18 +1,21 @@
+using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
 using Tests.Shared;
 
 namespace Tests.RecruitmentModule.Infrastructure;
 
-/// <summary>The lists' search can use the trigram indexes the schema gives it, rather than scanning every post.</summary>
+/// <summary>The lists' search can use the unaccented trigram indexes the schema gives it, rather than scanning every post.</summary>
 public class JobPostQueryExtensionsTests
 {
     [Fact]
-    public async Task The_search_the_lists_send_is_served_by_both_trigram_indexes()
+    public async Task The_search_the_lists_send_is_served_by_both_unaccented_trigram_indexes()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
-        IQueryable<JobPost> search = db.JobPosts.MatchingSearch("elektr").NewestFirst();
+        IQueryable<JobPost> search = db.JobPosts
+            .MatchingSearch("elektr", JobPostSorts.Relevance)
+            .SortedBy(JobPostSorts.Relevance, "elektr");
 
         string plan = await QueryPlans.ExplainAsync(db, search, ct);
 

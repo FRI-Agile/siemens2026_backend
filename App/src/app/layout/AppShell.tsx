@@ -8,6 +8,9 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     minHeight: '100vh',
     backgroundColor: tokens.colorNeutralBackground3,
+    // What a page's own sticky bar needs to sit under the header and hide what scrolls beneath it.
+    '--app-header-height': '72px',
+    '--app-background': tokens.colorNeutralBackground3,
   },
   header: {
     position: 'sticky',

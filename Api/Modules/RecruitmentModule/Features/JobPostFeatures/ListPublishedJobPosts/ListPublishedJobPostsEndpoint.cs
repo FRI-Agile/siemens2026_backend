@@ -4,6 +4,7 @@ using Kernel.Idempotency;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using RecruitmentModule.Domain;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ListPublishedJobPosts;
 
@@ -25,7 +26,8 @@ internal sealed class ListPublishedJobPostsEndpoint : IEndpoint
                     Offset = request.Offset ?? 0,
                     Limit = request.Limit ?? ListPublishedJobPostsQuery.DefaultLimit,
                     Search = request.Search,
-                    EmploymentType = request.EmploymentType,
+                    EmploymentTypes = request.EmploymentTypes ?? [],
+                    Sort = request.Sort ?? JobPostSorts.Newest,
                 };
                 return Results.Ok(await handler.HandleAsync(query, ct));
             })

@@ -1,106 +1,35 @@
+import { Button, makeStyles, mergeClasses } from '@fluentui/react-components'
+import { AddRegular } from '@fluentui/react-icons'
 import {
-  Button,
-  Checkbox,
-  Input,
-  makeStyles,
-  MessageBar,
-  MessageBarBody,
-  Select,
-} from '@fluentui/react-components'
-import { AddRegular, SearchRegular } from '@fluentui/react-icons'
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+  FilterChecks,
+  FilterChoice,
+  JobPostListPage,
+  JobPostListToolbar,
+  JobPostPager,
+  JobPostTable,
+} from '../../../features/recruitment/jobPostList/JobPostList.tsx'
+import {
+  employmentTypeOptions,
+  listParam,
+  sortOptions,
+  useJobPostListParams,
+} from '../../../features/recruitment/jobPostList/useJobPostListParams.ts'
 import {
   useManagedJobPosts,
+  managedJobPostStatuses,
   type ManagedJobPostStatus,
 } from '../../../features/recruitment/managedJobPosts.ts'
-import {
-  employmentTypeLabels,
-  employmentTypes,
-  formatSalary,
-} from '../../../features/recruitment/vocabulary.ts'
 import { ApiError } from '../../../shared/api/http.ts'
 import { useCurrentStaff } from '../../../shared/auth/useCurrentStaff.ts'
 
 const useStyles = makeStyles({
-  main: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '48px 32px',
-  },
-  headingRow: {
-    display: 'flex',
-    alignItems: 'start',
-    justifyContent: 'space-between',
-    gap: '20px',
-    marginBottom: '12px',
-  },
-  heading: {
-    margin: 0,
-    color: '#1F2933',
-    fontSize: '32px',
-  },
-  subtitle: {
-    margin: '12px 0 32px',
-    color: '#475569',
-  },
-  filters: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(240px, 2fr) minmax(180px, 1fr)',
-    gap: '16px',
-    marginBottom: '24px',
-  },
-  filter: {
-    width: '100%',
-  },
-  search: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  },
-  tableWrapper: {
-    overflowX: 'auto',
-    border: '1px solid #E5E7EB',
-    borderRadius: '12px',
-    backgroundColor: '#FFFFFF',
-    boxShadow: '0 4px 16px rgba(31, 41, 51, 0.06)',
-  },
-  table: {
-    width: '100%',
-    minWidth: '760px',
-    borderCollapse: 'collapse',
-  },
-  cell: {
-    padding: '18px 20px',
-    color: '#475569',
-    textAlign: 'left',
-    borderBottom: '1px solid #E5E7EB',
-  },
-  headerCell: {
-    padding: '16px 20px',
-    color: '#475569',
-    fontSize: '13px',
-    fontWeight: 700,
-    textAlign: 'left',
-    textTransform: 'uppercase',
-    backgroundColor: '#F7F8FA',
-    borderBottom: '1px solid #E5E7EB',
-  },
-  title: {
-    color: '#1F2933',
-    fontWeight: 700,
-    textDecoration: 'none',
-    ':hover': {
-      color: '#D8631D',
-      textDecoration: 'underline',
-    },
-  },
   status: {
     display: 'inline-block',
     padding: '7px 14px',
     borderRadius: '999px',
     fontSize: '13px',
     fontWeight: 700,
+    whiteSpace: 'nowrap',
   },
   draft: {
     color: '#6B4E00',
@@ -114,25 +43,6 @@ const useStyles = makeStyles({
     color: '#5B6470',
     backgroundColor: '#E8EBEF',
   },
-  error: {
-    marginBottom: '20px',
-  },
-  empty: {
-    padding: '36px 20px',
-    color: '#687280',
-    textAlign: 'center',
-  },
-  '@media (max-width: 700px)': {
-    main: {
-      padding: '36px 24px',
-    },
-    headingRow: {
-      display: 'grid',
-    },
-    filters: {
-      gridTemplateColumns: '1fr',
-    },
-  },
 })
 
 const statusLabels: Record<ManagedJobPostStatus, string> = {
@@ -141,137 +51,115 @@ const statusLabels: Record<ManagedJobPostStatus, string> = {
   closed: 'Uzavretá',
 }
 
+const statusOptions = managedJobPostStatuses.map((status) => ({
+  value: status,
+  label: statusLabels[status],
+}))
+
+/** Posts per page. */
+const PAGE_SIZE = 20
+
 export function StaffJobPostsPage() {
   const styles = useStyles()
-  const { data, error, isPending } = useManagedJobPosts()
+  const list = useJobPostListParams()
+  const statuses = listParam(list.params, 'stav', managedJobPostStatuses)
+  const { data, error, isPending, isPlaceholderData } = useManagedJobPosts({
+    offset: (list.page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
+    search: list.search || undefined,
+    statuses,
+    employmentTypes: list.employmentTypes,
+    sort: list.sort,
+  })
   const { data: me } = useCurrentStaff()
-  const [search, setSearch] = useState('')
-  const [employmentType, setEmploymentType] = useState('')
-  const [showClosed, setShowClosed] = useState(false)
   const canManage =
-    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ??
-    false
-  const normalizedSearch = search.trim().toLocaleLowerCase('sk-SK')
-  const items = useMemo(
-    () =>
-      (data?.items ?? []).filter((post) => {
-        const matchesSearch = [post.title, post.location].some((value) =>
-          value.toLocaleLowerCase('sk-SK').includes(normalizedSearch),
-        )
-        return (
-          matchesSearch &&
-          (!employmentType || post.employmentType === employmentType) &&
-          (showClosed || post.status !== 'closed')
-        )
-      }),
-    [data?.items, employmentType, normalizedSearch, showClosed],
-  )
+    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ?? false
+
+  const activeFilters =
+    statuses.length +
+    list.employmentTypes.length +
+    Number(list.sort !== list.defaultSort)
+  const message = isPending
+    ? 'Načítava sa…'
+    : error
+      ? error instanceof ApiError && error.status === 403
+        ? 'Na správu pracovných ponúk nemáte oprávnenie.'
+        : 'Pracovné ponuky sa nepodarilo načítať.'
+      : data.items.length > 0
+        ? undefined
+        : data.total > 0
+          ? 'Na tejto strane už nie sú žiadne pracovné ponuky.'
+          : 'Nenašli sa žiadne pracovné ponuky.'
 
   return (
-    <main className={styles.main}>
-      <div className={styles.headingRow}>
-        <div>
-          <h1 className={styles.heading}>Pracovné ponuky</h1>
-          <p className={styles.subtitle}>
-            Spravujte koncepty, zverejnené a uzavreté pracovné pozície.
-          </p>
-        </div>
-        {canManage && (
-          <Button as="a" href="/staff/jobs/new" appearance="primary" icon={<AddRegular />}>
+    <JobPostListPage
+      heading="Pracovné ponuky"
+      intro="Spravujte koncepty, zverejnené a uzavreté pracovné pozície."
+      action={
+        canManage && (
+          <Button
+            as="a"
+            href="/staff/jobs/new"
+            appearance="primary"
+            size="large"
+            icon={<AddRegular />}
+          >
             Vytvoriť pracovnú pozíciu
           </Button>
-        )}
-      </div>
-      {error && (
-        <MessageBar className={styles.error} intent="error">
-          <MessageBarBody>
-            {error instanceof ApiError && error.status === 403
-              ? 'Na správu pracovných ponúk nemáte oprávnenie.'
-              : 'Pracovné ponuky sa nepodarilo načítať.'}
-          </MessageBarBody>
-        </MessageBar>
-      )}
-      <div className={styles.filters}>
-        <div className={styles.search}>
-          <SearchRegular aria-hidden="true" />
-          <Input
-            className={styles.filter}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Hľadať podľa názvu alebo lokality"
-            aria-label="Hľadať pracovnú ponuku"
-          />
-        </div>
-        <Select
-          className={styles.filter}
-          value={employmentType}
-          onChange={(event) => setEmploymentType(event.target.value)}
-          aria-label="Filtrovať podľa typu pracovného pomeru"
-        >
-          <option value="">Všetky typy úväzku</option>
-          {employmentTypes.map((type) => (
-            <option key={type} value={type}>
-              {employmentTypeLabels[type]}
-            </option>
-          ))}
-        </Select>
-        <Checkbox
-          checked={showClosed}
-          label="Zobraziť uzatvorené"
-          onChange={(_, data) => setShowClosed(data.checked === true)}
+        )
+      }
+    >
+      <JobPostListToolbar
+        searchInput={list.searchInput}
+        onSearchInput={list.setSearchInput}
+        activeFilters={activeFilters}
+        onClearFilters={() => list.clearFilters({ stav: undefined })}
+      >
+        <FilterChecks
+          label="Stav"
+          values={statuses}
+          options={statusOptions}
+          onToggle={(status) =>
+            list.toggle('stav', managedJobPostStatuses, status)
+          }
         />
-      </div>
-      <div className={styles.tableWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.headerCell}>Názov pozície</th>
-              <th className={styles.headerCell}>Lokalita</th>
-              <th className={styles.headerCell}>Typ úväzku</th>
-              <th className={styles.headerCell}>Mzda</th>
-              <th className={styles.headerCell}>Stav</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isPending && (
-              <tr>
-                <td className={styles.empty} colSpan={5}>Načítava sa…</td>
-              </tr>
-            )}
-            {!isPending &&
-              items.map((post) => (
-                <tr key={post.id}>
-                  <td className={styles.cell}>
-                    <Link className={styles.title} to={`/staff/jobs/${post.id}`}>
-                      {post.title}
-                    </Link>
-                  </td>
-                  <td className={styles.cell}>{post.location}</td>
-                  <td className={styles.cell}>
-                    {employmentTypeLabels[post.employmentType]}
-                  </td>
-                  <td className={styles.cell}>
-                    {formatSalary(post.salary, post.paymentType)}
-                  </td>
-                  <td className={styles.cell}>
-                    <span
-                      className={`${styles.status} ${styles[post.status]}`}
-                    >
-                      {statusLabels[post.status]}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            {!isPending && items.length === 0 && (
-              <tr>
-                <td className={styles.empty} colSpan={5}>
-                  Nenašli sa žiadne pracovné ponuky.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </main>
+        <FilterChecks
+          label="Typ pracovného pomeru"
+          values={list.employmentTypes}
+          options={employmentTypeOptions}
+          onToggle={list.toggleEmploymentType}
+        />
+        <FilterChoice
+          label="Zoradiť"
+          value={list.sort}
+          options={sortOptions(Boolean(list.search))}
+          onChange={list.setSort}
+        />
+      </JobPostListToolbar>
+      <JobPostTable
+        items={data?.items ?? []}
+        linkTo={(post) => `/staff/jobs/${post.id}`}
+        extraColumn={{
+          header: 'Stav',
+          render: (post) => (
+            <span className={mergeClasses(styles.status, styles[post.status])}>
+              {statusLabels[post.status]}
+            </span>
+          ),
+        }}
+        message={message}
+        busy={isPlaceholderData}
+      />
+      {data && (
+        <JobPostPager
+          page={list.page}
+          offset={data.offset}
+          shown={data.items.length}
+          total={data.total}
+          disabled={isPlaceholderData}
+          onPage={list.setPage}
+        />
+      )}
+    </JobPostListPage>
   )
 }

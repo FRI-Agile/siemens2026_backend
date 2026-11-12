@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Kernel.Validation;
 using Microsoft.OpenApi;
 
 namespace ApiService.OpenAPI;
@@ -91,6 +92,10 @@ internal static class ValidationSchemaRules
                         .Where(v => v is not null)
                         .Select(v => (JsonNode)JsonValue.Create(v!.ToString())!)
                         .ToList();
+                    break;
+
+                case AllowedItemsAttribute allowed when target.Items is OpenApiSchema items:
+                    items.Enum = allowed.Values.Select(v => (JsonNode)JsonValue.Create(v)!).ToList();
                     break;
             }
 
