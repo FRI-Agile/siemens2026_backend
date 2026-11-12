@@ -113,10 +113,11 @@ change both together.
 - **Who writes what.** Only a hiring manager (or an administrator) creates a job post (`POST /job-posts`), and names
   its recruiter in the same request, choosing from `GET /recruiters`. A hiring manager creates the post for
   themselves (`hiring_manager_id` is their `oid`); an administrator must also name its hiring manager, choosing from
-  `GET /hiring-managers` (administrators only), so a post never lacks either. Any hiring manager can then
+  `GET /hiring-managers` (administrators only), so a post never lacks either. Its hiring manager (or an administrator) can then
   edit it (`PUT /job-posts/{id}`; only an administrator may change `hiring_manager_id` there, and a new recruiter or
   hiring manager is checked for the role), close it (`POST …/close`) or reopen it (`POST …/reopen`), so the table keeps
   `updated_by`. Each of them carries the `version` the caller read ([optimistic locking](../conventions.md#optimistic-locking-version)).
+  Another hiring manager's post answers `404` like a missing one (`JobPostAccess.Manageable`).
 - **Status moves `draft → published ⇄ closed`.** A post is created as a draft or published; editing can publish a
   draft. A published post never returns to a draft — applicants may have seen it — so it is closed instead. Only a
   published post can be closed, and only a closed one reopened, which publishes it again. A closed post is reopened
@@ -128,7 +129,9 @@ change both together.
   below, optionally filtered by `employmentTypes`) and `GET /job-posts/{id}` are anonymous and filter on
   `status = 'published'`; a draft or closed post answers `404` like a missing post. They never return `recruiter_id` or
   the audit columns.
-- **Staff see every row.** `POST /job-posts/manage/search` (hiring managers and administrators) lists every status,
+- **Staff see every status of the posts in their reach.** `POST /job-posts/manage/search` (any staff member) lists an
+  administrator every post, a hiring manager the posts they are the hiring manager of and a recruiter the posts assigned
+  to them (`JobPostAccess`; someone with both roles sees both), in every status,
   optionally filtered by `statuses`, and takes the same `employmentTypes`, search and sorts. It returns every column,
   `version` included, so the edit, close and reopen features can be driven from it.
 - **The filters are lists.** `statuses` and `employmentTypes` each match a post with any of their values; empty or
@@ -155,7 +158,7 @@ change both together.
 > stands in the hiring pipeline. Each job post has its own applicants; there is no shared candidate table
 > ([ADR-D010](../decision-log.md#adr-d010--applicants-belong-to-the-job-post-no-shared-candidate)).
 
-**Audit:** standard, without `created_by` ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by)) · **Soft delete:** no
+**Audit:** standard; `created_by` only on a manual row ([ADR-D008](../decision-log.md#adr-d008--rows-an-anonymous-applicant-creates-have-no-created_by), [ADR-D011](../decision-log.md#adr-d011--staff-can-add-an-applicant-by-hand-recorded-with-is_manual-and-created_by)) · **Soft delete:** no
 
 **Columns**
 
@@ -169,6 +172,8 @@ change both together.
 | `email` | `TEXT` | UQ | NO |  | Contact e-mail; unique per post on `lower(email)` |
 | `phone_number` | `TEXT` |  | YES |  | Contact phone in E.164 (`+421905123456`); optional on the application form, which takes it in this form only |
 | `status` | `TEXT` |  | NO | `'nová žiadosť'` | Where the application is in the pipeline — see CHECK |
+| `is_manual` | `BOOLEAN` |  | NO | `false` | Added by a recruiter or an administrator by hand, rather than submitted through the public form |
+| `created_by` | `UUID` |  | YES |  | Entra `oid` of the staff member who added a manual row; `NULL` on a submitted one (logical, no FK) |
 
 **Value sets**
 
@@ -199,6 +204,7 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 | `application_email_valid` | CHECK | `email ~ '^[^@\s]+@[^@\s]+$'` | One `@` between non-blank parts; the application validates further |
 | `application_phone_number_valid` | CHECK | `phone_number ~ '^\+[1-9][0-9]{6,14}$'` | E.164 only, when given |
 | `application_status_valid` | CHECK | `status IN ('nová žiadosť','predvýber','pohovor','ponuka','prijatý','odmietnutý')` | Guards the value set |
+| `application_manual_has_creator` | CHECK | `is_manual = (created_by IS NOT NULL)` | A manual row names who added it; a submitted one names nobody |
 
 **Indexes**
 
@@ -225,6 +231,13 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 - **Only published posts take applications.** The submitting command (`SubmitApplication`) checks
   `job_post.status = 'published'`; a CHECK cannot look at another row. A draft answers `404`, as it is invisible to
   applicants, and a closed post `409`. Closing a post later leaves its applications as they are.
+- **Staff can add a candidate by hand** (`CreateManualApplication`, `POST /applications`): a recruiter to a published
+  post assigned to them, an administrator to any published post (`JobPostAccess.Recruitable`); a hiring manager is
+  refused by the `staff-recruiter` policy (`403`), a post outside the caller's reach answers `404` and a draft or
+  closed post `409`. It takes the first and last name, the e-mail and optionally the phone, with the form's rules, and
+  stores the row in `nová žiadosť` with `is_manual = true` and `created_by` from the token. No documents come with it:
+  they are attached afterwards. An e-mail already on the post, submitted or manual, is the same `409` as below
+  ([ADR-D011](../decision-log.md#adr-d011--staff-can-add-an-applicant-by-hand-recorded-with-is_manual-and-created_by)).
 - **Applying twice to one post is refused, not merged.** A second application with the same e-mail (any case) to the
   same post is answered `409` and changes nothing: the applicant is anonymous, so replacing the first application's
   details or documents would let anyone who knows the e-mail overwrite it. A retry of the *same* submission carries the
@@ -233,7 +246,8 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
 - **Status moves `nová žiadosť → predvýber → pohovor → ponuka → prijatý`, and `odmietnutý` from any step before
   `prijatý`.** Staff move it, carrying the `version` they read ([optimistic locking](../conventions.md#optimistic-locking-version)). The
   application enforces the moves; the table only guards the value set.
-- **The job post detail lists its applications** (`ListApplications`) — first name, last name, e-mail and status — by
+- **The job post detail lists its applications** (`ListApplications`) — first name, last name, e-mail, phone, status
+  and `is_manual` — by
   `job_post_id`, with no join; the position column is the post's own title. Newest or oldest first, by
   `(created_at, id)` so offset pages neither repeat nor skip a row, served by `idx_application_job_post_id_created_at`.
   Who may list them is the post's: an administrator any post, a recruiter the posts assigned to them (`recruiter_id`),

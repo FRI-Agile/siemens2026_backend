@@ -229,6 +229,10 @@ CREATE TRIGGER trg_job_post_set_audit
 -- details typed for it. Submitted by the anonymous applicant to a published post (checked by the application), so no
 -- `created_by` (ADR-D008); staff correct the details and move the status, hence `updated_by`.
 --
+-- A recruiter (or an administrator) can also add an applicant by hand, e.g. one who sent their details by e-mail or was
+-- referred by an employee: `is_manual` marks such a row and `created_by` names the staff member who added it, set on
+-- every manual row and on no submitted one (ADR-D011). Its documents are attached afterwards, not with the row.
+--
 -- Staff move it through the hiring pipeline: `nová žiadosť -> predvýber -> pohovor -> ponuka -> prijatý`, and
 -- `odmietnutý` from any step before `prijatý`. The codes are the Slovak terms as written (ADR-D009).
 --
@@ -245,7 +249,9 @@ CREATE TABLE recruitment.application (
     email         TEXT         NOT NULL,
     phone_number  TEXT,                   -- E.164; optional on the application form
     status        TEXT         NOT NULL DEFAULT 'nová žiadosť',  -- nová žiadosť / predvýber / pohovor / ponuka / prijatý / odmietnutý
+    is_manual     BOOLEAN      NOT NULL DEFAULT false,  -- added by staff rather than submitted through the public form
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_by    UUID,                   -- Entra oid of the staff member who added a manual row; NULL when submitted
     updated_at    TIMESTAMPTZ,
     updated_by    UUID,
     version       SMALLINT     NOT NULL DEFAULT 1,
@@ -256,7 +262,8 @@ CREATE TABLE recruitment.application (
     CONSTRAINT application_email_valid CHECK (email ~ '^[^@\s]+@[^@\s]+$'),
     CONSTRAINT application_phone_number_valid CHECK (phone_number ~ '^\+[1-9][0-9]{6,14}$'),
     CONSTRAINT application_status_valid CHECK (status IN (
-        'nová žiadosť', 'predvýber', 'pohovor', 'ponuka', 'prijatý', 'odmietnutý'))
+        'nová žiadosť', 'predvýber', 'pohovor', 'ponuka', 'prijatý', 'odmietnutý')),
+    CONSTRAINT application_manual_has_creator CHECK (is_manual = (created_by IS NOT NULL))
 );
 -- One application per e-mail and post, regardless of case: applying again to the same post is refused.
 CREATE UNIQUE INDEX uq_application_job_post_id_email ON recruitment.application (job_post_id, lower(email));

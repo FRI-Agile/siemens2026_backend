@@ -34,4 +34,28 @@ public sealed record JobPostAccess(Guid StaffId, bool All, bool Assigned, bool M
         (_, false, true) => posts.Where(p => p.HiringManagerId == StaffId),
         _ => posts.Where(_ => false),
     };
+
+    /// <summary>
+    /// The posts in <paramref name="posts"/> this access may change (edit, publish, close, reopen): an administrator
+    /// every post, a hiring manager the posts they are the hiring manager of; none for a recruiter, who only reads.
+    /// </summary>
+    /// <param name="posts">The posts to narrow.</param>
+    public IQueryable<JobPost> Manageable(IQueryable<JobPost> posts) => (All, Managed) switch
+    {
+        (true, _) => posts,
+        (_, true) => posts.Where(p => p.HiringManagerId == StaffId),
+        _ => posts.Where(_ => false),
+    };
+
+    /// <summary>
+    /// The posts in <paramref name="posts"/> whose candidates this access may create and change: an administrator every
+    /// post, a recruiter the posts assigned to them; none for a hiring manager, who only reads candidates.
+    /// </summary>
+    /// <param name="posts">The posts to narrow.</param>
+    public IQueryable<JobPost> Recruitable(IQueryable<JobPost> posts) => (All, Assigned) switch
+    {
+        (true, _) => posts,
+        (_, true) => posts.Where(p => p.RecruiterId == StaffId),
+        _ => posts.Where(_ => false),
+    };
 }

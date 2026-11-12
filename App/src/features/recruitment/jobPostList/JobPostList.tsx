@@ -91,9 +91,23 @@ const useStyles = makeStyles({
     padding: '12px 0',
     backgroundColor: 'var(--app-background, #F1F3F5)',
   },
+  // Inside a card, the toolbar scrolls with it rather than sticking under the header on the page's background.
+  inlineToolbar: {
+    position: 'static',
+    padding: 0,
+    backgroundColor: 'transparent',
+  },
   search: {
     flex: '1 1 auto',
     minWidth: 0,
+  },
+  // Narrower, with the action and the filter button pushed to the right end.
+  narrowSearch: {
+    flex: '0 1 640px',
+    marginRight: 'auto',
+  },
+  toolbarAction: {
+    flexShrink: 0,
   },
   filterButton: {
     flexShrink: 0,
@@ -165,6 +179,19 @@ const useStyles = makeStyles({
       textDecoration: 'underline',
     },
   },
+  actionsCell: {
+    width: '1%',
+    whiteSpace: 'nowrap',
+    textAlign: 'right',
+  },
+  visuallyHidden: {
+    position: 'absolute',
+    width: '1px',
+    height: '1px',
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
   message: {
     padding: '36px 20px',
     color: '#687280',
@@ -225,12 +252,25 @@ export function JobPostListPage({
 export function JobPostListToolbar({
   searchInput,
   onSearchInput,
+  searchPlaceholder = 'Hľadať podľa názvu alebo lokality',
+  searchLabel = 'Hľadať pracovné pozície',
+  sticky = true,
+  narrowSearch = false,
+  action,
   activeFilters,
   onClearFilters,
   children,
 }: {
   searchInput: string
   onSearchInput: (value: string) => void
+  searchPlaceholder?: string
+  searchLabel?: string
+  /** Sticks under the layout's header while the page scrolls; off inside a card. */
+  sticky?: boolean
+  /** A search box of limited width instead of one filling the row. */
+  narrowSearch?: boolean
+  /** A button between the search box and the filter button, e.g. one that creates a row of the list. */
+  action?: ReactNode
   /** How many filters differ from the default; shown on the filter button. */
   activeFilters: number
   onClearFilters: () => void
@@ -238,18 +278,24 @@ export function JobPostListToolbar({
 }) {
   const styles = useStyles()
   return (
-    <div className={styles.toolbar}>
+    <div
+      className={mergeClasses(styles.toolbar, !sticky && styles.inlineToolbar)}
+    >
       <Input
-        className={styles.search}
+        className={mergeClasses(
+          styles.search,
+          narrowSearch && styles.narrowSearch,
+        )}
         size="large"
         contentBefore={<SearchRegular aria-hidden="true" />}
         value={searchInput}
         maxLength={200}
         onChange={(event) => onSearchInput(event.target.value)}
-        placeholder="Hľadať podľa názvu alebo lokality"
-        aria-label="Hľadať pracovné pozície"
+        placeholder={searchPlaceholder}
+        aria-label={searchLabel}
         type="search"
       />
+      {action && <div className={styles.toolbarAction}>{action}</div>}
       {/* Pinned below the button and sized to the room there, so a long menu scrolls rather than flipping or sliding
           up over the sticky header. */}
       <Popover
@@ -373,18 +419,25 @@ export interface JobPostRow {
   paymentType: PaymentType
 }
 
-/** The job post table; a `message` (loading, an error, nothing found) shows in place of the rows. */
-export function JobPostTable<T extends JobPostRow>({
+/** One column of a `ListTable`: its header and how a row fills it. */
+export interface ListColumn<T> {
+  /** Shown in the header; a column of row buttons has none visible, so give it a label for screen readers. */
+  header: string
+  hideHeader?: boolean
+  render: (item: T) => ReactNode
+  /** A narrow column that keeps to its content, aligned right (e.g. row buttons). */
+  compact?: boolean
+}
+
+/** The list tables' frame: header, rows, and a `message` (loading, an error, nothing found) in place of the rows. */
+export function ListTable<T extends { id: string }>({
+  columns,
   items,
-  linkTo,
-  extraColumn,
   message,
   busy,
 }: {
+  columns: readonly ListColumn<T>[]
   items: readonly T[]
-  linkTo: (post: T) => string
-  /** A last column one page adds, e.g. the staff page's status. */
-  extraColumn?: { header: string; render: (post: T) => ReactNode }
   message?: string
   busy: boolean
 }) {
@@ -394,46 +447,102 @@ export function JobPostTable<T extends JobPostRow>({
       <table className={styles.table} aria-busy={busy}>
         <thead>
           <tr>
-            <th className={styles.headerCell}>Názov pozície</th>
-            <th className={styles.headerCell}>Lokalita</th>
-            <th className={styles.headerCell}>Typ pracovného pomeru</th>
-            <th className={styles.headerCell}>Mzda</th>
-            {extraColumn && (
-              <th className={styles.headerCell}>{extraColumn.header}</th>
-            )}
+            {columns.map((column) => (
+              <th
+                key={column.header}
+                className={mergeClasses(
+                  styles.headerCell,
+                  column.compact && styles.actionsCell,
+                )}
+              >
+                {column.hideHeader ? (
+                  <span className={styles.visuallyHidden}>{column.header}</span>
+                ) : (
+                  column.header
+                )}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {message ? (
             <tr>
-              <td className={styles.message} colSpan={extraColumn ? 5 : 4}>
+              <td className={styles.message} colSpan={columns.length}>
                 {message}
               </td>
             </tr>
           ) : (
-            items.map((post) => (
-              <tr className={styles.row} key={post.id}>
-                <td className={styles.cell}>
-                  <Link className={styles.title} to={linkTo(post)}>
-                    {post.title}
-                  </Link>
-                </td>
-                <td className={styles.cell}>{post.location}</td>
-                <td className={styles.cell}>
-                  {employmentTypeLabels[post.employmentType]}
-                </td>
-                <td className={styles.cell}>
-                  {formatSalary(post.salary, post.paymentType)}
-                </td>
-                {extraColumn && (
-                  <td className={styles.cell}>{extraColumn.render(post)}</td>
-                )}
+            items.map((item) => (
+              <tr className={styles.row} key={item.id}>
+                {columns.map((column) => (
+                  <td
+                    key={column.header}
+                    className={mergeClasses(
+                      styles.cell,
+                      column.compact && styles.actionsCell,
+                    )}
+                  >
+                    {column.render(item)}
+                  </td>
+                ))}
               </tr>
             ))
           )}
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** The job post table. */
+export function JobPostTable<T extends JobPostRow>({
+  items,
+  linkTo,
+  extraColumn,
+  actions,
+  message,
+  busy,
+}: {
+  items: readonly T[]
+  linkTo: (post: T) => string
+  /** A last column one page adds, e.g. the staff page's status. */
+  extraColumn?: { header: string; render: (post: T) => ReactNode }
+  /** Buttons at the end of each row, e.g. the staff page's edit icon; the column has no visible header. */
+  actions?: (post: T) => ReactNode
+  message?: string
+  busy: boolean
+}) {
+  const styles = useStyles()
+  const columns: ListColumn<T>[] = [
+    {
+      header: 'Názov pozície',
+      render: (post) => (
+        <Link className={styles.title} to={linkTo(post)}>
+          {post.title}
+        </Link>
+      ),
+    },
+    { header: 'Lokalita', render: (post) => post.location },
+    {
+      header: 'Typ pracovného pomeru',
+      render: (post) => employmentTypeLabels[post.employmentType],
+    },
+    {
+      header: 'Mzda',
+      render: (post) => formatSalary(post.salary, post.paymentType),
+    },
+  ]
+  if (extraColumn) columns.push(extraColumn)
+  if (actions)
+    columns.push({
+      header: 'Akcie',
+      hideHeader: true,
+      compact: true,
+      render: actions,
+    })
+
+  return (
+    <ListTable columns={columns} items={items} message={message} busy={busy} />
   )
 }
 

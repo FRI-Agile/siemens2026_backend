@@ -6,7 +6,8 @@ namespace RecruitmentModule.Domain.Entity;
 /// </summary>
 /// <remarks>
 /// Each job post has its own applicants; there is no shared candidate (ADR-D010), so someone applying to two posts is two
-/// unrelated rows. Submitted by the anonymous applicant, so there is no <c>created_by</c> (ADR-D008).
+/// unrelated rows. Usually submitted by the anonymous applicant, with no <see cref="CreatedBy"/> (ADR-D008); a recruiter
+/// or an administrator may also add one by hand (<see cref="IsManual"/>), naming themselves (ADR-D011).
 /// </remarks>
 public sealed class Application
 {
@@ -30,9 +31,18 @@ public sealed class Application
     /// <summary>One of <see cref="ApplicationStatuses"/>.</summary>
     public string Status { get; set; } = ApplicationStatuses.New;
 
+    /// <summary>
+    /// Added by a staff member (<i>manuálne založený</i>), e.g. from details sent by e-mail or an employee's referral,
+    /// rather than submitted through the public form. Always together with <see cref="CreatedBy"/>.
+    /// </summary>
+    public bool IsManual { get; set; }
+
     public List<ApplicationDocument> Documents { get; set; } = [];
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>The Entra object id of the staff member who added a manual application; <c>null</c> when submitted.</summary>
+    public Guid? CreatedBy { get; set; }
 
     public DateTimeOffset? UpdatedAt { get; set; }
 

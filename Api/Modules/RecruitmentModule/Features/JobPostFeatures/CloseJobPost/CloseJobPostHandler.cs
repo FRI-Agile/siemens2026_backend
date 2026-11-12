@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Exceptions;
+using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
+using RecruitmentModule.Infrastructure.Authorization;
 
 namespace RecruitmentModule.Features.JobPostFeatures.CloseJobPost;
 
@@ -16,6 +18,9 @@ public sealed record CloseJobPostCommand : ICommand
 
     /// <summary>The post to close, from the route.</summary>
     public Guid JobPostId { get; init; }
+
+    /// <summary>Which posts the caller may change, from their token; any other post answers <c>404</c>.</summary>
+    public required JobPostAccess Access { get; init; }
 
     /// <summary>The optimistic-locking version the caller last read.</summary>
     [Range(1, short.MaxValue)]
@@ -31,7 +36,9 @@ internal sealed class CloseJobPostHandler(RecruitmentDbContext db, ICurrentUser 
 {
     public async Task<CloseJobPostResponse> HandleAsync(CloseJobPostCommand command, CancellationToken ct = default)
     {
-        JobPost post = await db.JobPosts.FindAsync([command.JobPostId], ct)
+        // A post outside the caller's reach answers like one that does not exist, so its existence is not disclosed.
+        JobPost post = await command.Access.Manageable(db.JobPosts)
+            .SingleOrDefaultAsync(p => p.Id == command.JobPostId, ct)
             ?? throw new NotFoundException("Pracovná ponuka neexistuje.");
 
         // The save then updates only `WHERE version = <the caller's>`, so a post changed since the caller read it is a 409.

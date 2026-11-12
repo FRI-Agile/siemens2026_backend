@@ -24,11 +24,11 @@ public sealed record ListApplicationsRequest
     public string? Search { get; init; }
 
     /// <summary>
-    /// Only applications in this state: <c>nová žiadosť</c>, <c>predvýber</c>, <c>pohovor</c>, <c>ponuka</c>,
-    /// <c>prijatý</c> or <c>odmietnutý</c>.
+    /// Only applications in one of these states: <c>nová žiadosť</c>, <c>predvýber</c>, <c>pohovor</c>, <c>ponuka</c>,
+    /// <c>prijatý</c> or <c>odmietnutý</c>; every state when left out or empty.
     /// </summary>
-    /// <example>predvýber</example>
-    public string? Status { get; init; }
+    /// <example>["predvýber", "pohovor"]</example>
+    public IReadOnlyList<string>? Statuses { get; init; }
 
     /// <summary>By submission: <c>newest</c> first (when left out) or <c>oldest</c> first.</summary>
     /// <example>newest</example>

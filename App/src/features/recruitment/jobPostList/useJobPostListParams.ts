@@ -77,8 +77,11 @@ function sortFrom(value: string | null): JobPostSort {
  * A job post list's page, search, employment types and sort, kept in the URL so the back button from a post returns
  * to the same list. Typing a search switches the sort to the best match, and clearing it returns to newest first; a
  * sort picked while searching is kept. Pages add their own filters through `params` and `update`.
+ *
+ * `relevance: false` is for a list whose API has no best-match sort (a post's applicants): searching then keeps the
+ * sort, which is only ever newest or oldest first.
  */
-export function useJobPostListParams() {
+export function useJobPostListParams({ relevance = true } = {}) {
   const [params, setParams] = useSearchParams()
   const page = Math.max(1, Number.parseInt(params.get('strana') ?? '', 10) || 1)
   const search = params.get('hladat') ?? ''
@@ -86,9 +89,11 @@ export function useJobPostListParams() {
   const requestedSort = sortFrom(params.get('zoradenie'))
   // The best match needs a search text; a link that has none lists newest first.
   const sort: JobPostSort =
-    requestedSort === 'relevance' && !search ? 'newest' : requestedSort
+    requestedSort === 'relevance' && (!search || !relevance)
+      ? 'newest'
+      : requestedSort
   /** The sort a search (or its absence) starts with, which the filter count does not count as a change. */
-  const defaultSort: JobPostSort = search ? 'relevance' : 'newest'
+  const defaultSort: JobPostSort = search && relevance ? 'relevance' : 'newest'
   const [searchInput, setSearchInput] = useState(search)
 
   /** A filter change replaces the history entry; a page change adds one, so the back button steps through pages. */
@@ -129,9 +134,11 @@ export function useJobPostListParams() {
           () => {
             const current = new URLSearchParams(window.location.search)
             const changes: ListParamChanges = { hladat: trimmed || undefined }
-            if (trimmed && !current.get('hladat'))
+            // Without a best match to switch to, the sort stays as picked.
+            if (relevance && trimmed && !current.get('hladat'))
               changes.zoradenie = sortParams.relevance
             else if (
+              relevance &&
               !trimmed &&
               current.get('zoradenie') === sortParams.relevance
             )
@@ -143,7 +150,7 @@ export function useJobPostListParams() {
       SEARCH_DELAY_MS,
     )
     return () => clearTimeout(timer)
-  }, [searchInput, search, setParams])
+  }, [searchInput, search, setParams, relevance])
 
   return {
     params,

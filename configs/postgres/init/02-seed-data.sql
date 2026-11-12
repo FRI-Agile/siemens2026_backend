@@ -8,11 +8,15 @@
 --  Local development only. The test harness loads 01-create-db.sql alone, so tests start empty, and
 --  production never runs these scripts.
 --
---  Staff live in Entra, not in the database (ADR-D004). The seed rows point at placeholder object ids
---  that belong to no Entra user, so a staff screen resolving them finds nobody:
---    00000000-0000-0000-0000-00000000aaaa  the hiring manager who "created" every post and owns it (created_by,
---                                          hiring_manager_id)
---    00000000-0000-0000-0000-00000000bbbb  the recruiter responsible for them (recruiter_id)
+--  Staff live in Entra, not in the database (ADR-D004). Two of the dev tenant's test accounts own some posts, so
+--  signing in as them shows each role's reach (JobPostAccess); the rest point at placeholder object ids that belong to
+--  no Entra user, which only an administrator sees:
+--    1eed7624-bc53-4fcb-91e1-383487482581  the test hiring manager: created_by and hiring_manager_id of 8 posts
+--    69c7595a-edbe-475d-9d8b-5ce9b4dec1b2  the test recruiter: recruiter_id of 8 posts
+--    00000000-0000-0000-0000-00000000aaaa  placeholder hiring manager of the other posts (created_by, hiring_manager_id)
+--    00000000-0000-0000-0000-00000000bbbb  placeholder recruiter of the other posts (recruiter_id)
+--  Both test accounts share 6 posts, among them 'Elektrotechnik údržby' and 'Vývojár softvéru (.NET)' with the seeded
+--  applications, the closed post and the draft 'Vedúci logistiky'; each also has 2 posts of their own.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -32,56 +36,56 @@ Ponúkame prácu na zmeny, príplatky za nočné a víkendové zmeny a hradené 
 
 Požadujeme vyhlášku 508/2009 Z. z. (§ 21 alebo § 22) a aspoň dva roky praxe.',
      'published', 2, 1650.00, 'monthly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '1 day'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '1 day'),
 
     ('Operátor CNC strojov', 'Trnava', 'Výroba',
      'Obsluhujete CNC sústruhy a frézy, kontrolujete rozmery dielcov podľa výkresovej dokumentácie a zapisujete výsledky merania.
 
 Zaučíme vás; výhodou je skúsenosť so systémami Sinumerik alebo Heidenhain.',
      'published', 4, 9.80, 'hourly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '2 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '2 days'),
 
     ('Vývojár softvéru (.NET)', 'Žilina', 'Technológie',
      'Vyvíjate interné aplikácie na plánovanie výroby v C# a ASP.NET Core, navrhujete REST API a píšete testy.
 
 Pracujeme v malom tíme so zavedeným code review a CI. Dva dni v týždni môžete pracovať z domu.',
      'published', 1, 2800.00, 'monthly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '3 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '3 days'),
 
     ('Skladník', 'Senec', 'Logistika',
      'Príjem a výdaj tovaru, vychystávanie objednávok so skenerom a práca s vysokozdvižným vozíkom.
 
 Preukaz na VZV je výhodou, nie podmienkou: kurz vám zaplatíme.',
      'published', 3, 8.50, 'hourly', 'fixed_term',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '4 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '4 days'),
 
     ('Brigáda: pomocník vo výrobe', 'Nitra', 'Výroba',
      'Jednoduchá montáž a balenie dielcov na linke. Vhodné pre študentov: zmeny si vyberáte podľa rozvrhu.
 
 Podmienkou je status študenta a vek nad 18 rokov.',
      'published', 6, 7.20, 'hourly', 'student_work_agreement',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '5 days'),
+     '00000000-0000-0000-0000-00000000bbbb', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '5 days'),
 
     ('Vedúci výroby', 'Košice', 'Výroba',
      'Riadite tri výrobné linky a tím 40 ľudí, zodpovedáte za plnenie plánu, kvalitu a bezpečnosť práce.
 
 Očakávame skúsenosť s riadením výroby v automotive alebo strojárstve a znalosť princípov lean manufacturingu.',
      'published', 1, 42000.00, 'yearly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '6 days'),
+     '00000000-0000-0000-0000-00000000bbbb', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '6 days'),
 
     ('Špecialista náboru', 'Bratislava', 'Ľudské zdroje',
      'Vediete náborový proces od inzerátu po nástup: oslovujete kandidátov, vediete pohovory a spolupracujete s manažérmi.
 
 Hľadáme komunikatívneho človeka, ktorý rád pracuje s ľuďmi.',
      'published', 1, 1900.00, 'monthly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '8 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '8 days'),
 
     ('Účtovník / účtovníčka', 'Banská Bystrica', 'Financie',
      'Spracúvate prijaté a vydané faktúry, bankové výpisy a podklady pre mesačnú uzávierku.
 
 Pracovný čas 6 hodín denne, vhodné aj pre rodičov po materskej dovolenke.',
      'published', 1, 1250.00, 'monthly', 'part_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '10 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '10 days'),
 
     ('Kontrolór kvality', 'Trnava', 'Kvalita',
      'Kontrolujete dielce na vstupe aj výstupe z výroby, meriate na súradnicovom meracom stroji a vediete záznamy o nezhodách.
@@ -122,13 +126,13 @@ Ponúkame stabilnú prácu, 13. a 14. plat a príspevok na dopravu.',
 
 Výhodou je angličtina na komunikatívnej úrovni.',
      'closed', 1, 1300.00, 'monthly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '25 days'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '25 days'),
 
     -- Drafts (koncepty): never in the public list or detail.
     ('Vedúci logistiky', 'Senec', 'Logistika',
      'Koncept: náplň práce ešte dopĺňame s vedením skladu.',
      'draft', 1, 36000.00, 'yearly', 'full_time',
-     '00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa', '00000000-0000-0000-0000-00000000aaaa', now() - interval '2 hours'),
+     '69c7595a-edbe-475d-9d8b-5ce9b4dec1b2', '1eed7624-bc53-4fcb-91e1-383487482581', '1eed7624-bc53-4fcb-91e1-383487482581', now() - interval '2 hours'),
 
     ('Brigáda: letná výpomoc v sklade', 'Nitra', 'Logistika',
      'Koncept: zverejníme v máji.',

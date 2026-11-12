@@ -5,6 +5,7 @@ using Kernel.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using RecruitmentModule.Infrastructure.Authorization;
 
 namespace RecruitmentModule.Features.JobPostFeatures.UpdateJobPost;
 
@@ -27,6 +28,7 @@ internal sealed class UpdateJobPostEndpoint : IEndpoint
                 UpdateJobPostCommand command = new() // manual map (ADR-A012)
                 {
                     JobPostId = jobPostId,
+                    Access = JobPostAccess.Of(user),
                     Title = request.Title,
                     Location = request.Location,
                     Department = request.Department,

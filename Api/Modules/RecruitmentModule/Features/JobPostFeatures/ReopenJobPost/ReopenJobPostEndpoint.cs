@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using RecruitmentModule.Infrastructure.Authorization;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ReopenJobPost;
 
@@ -16,10 +18,11 @@ internal sealed class ReopenJobPostEndpoint : IEndpoint
             .MapPost("/{jobPostId:guid}/reopen", static async (
                 Guid jobPostId,
                 ReopenJobPostRequest request,
+                ClaimsPrincipal user,
                 ICommandHandler<ReopenJobPostCommand, ReopenJobPostResponse> handler,
                 CancellationToken ct) =>
             {
-                ReopenJobPostCommand command = new() { JobPostId = jobPostId, Version = request.Version }; // manual map (ADR-A012)
+                ReopenJobPostCommand command = new() { JobPostId = jobPostId, Access = JobPostAccess.Of(user), Version = request.Version }; // manual map (ADR-A012)
                 return Results.Ok(await handler.HandleAsync(command, ct));
             })
             .WithName("ReopenJobPost")

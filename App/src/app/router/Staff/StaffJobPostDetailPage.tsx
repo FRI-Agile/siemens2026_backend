@@ -1,210 +1,176 @@
 import {
   Button,
-  Field,
-  Input,
   makeStyles,
   MessageBar,
   MessageBarBody,
-  Select,
-  Textarea,
+  tokens,
 } from '@fluentui/react-components'
-import { ArrowLeftRegular } from '@fluentui/react-icons'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { type UseQueryResult } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
-import { useForm, useWatch, type UseFormRegisterReturn } from 'react-hook-form'
+import {
+  AddRegular,
+  ChevronLeftRegular,
+  EditRegular,
+} from '@fluentui/react-icons'
+import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
-  useCloseManagedJobPost,
+  applicationStatuses,
+  applicationStatusLabels,
+  useJobPostApplications,
+  type ApplicationListItem,
+} from '../../../features/recruitment/applications.ts'
+import {
+  FilterChecks,
+  FilterChoice,
+  JobPostListToolbar,
+  JobPostPager,
+  ListTable,
+  type ListColumn,
+} from '../../../features/recruitment/jobPostList/JobPostList.tsx'
+import {
+  listParam,
+  sortOptions,
+  useJobPostListParams,
+} from '../../../features/recruitment/jobPostList/useJobPostListParams.ts'
+import {
+  canManageJobPost,
   useManagedJobPost,
-  useReopenManagedJobPost,
-  useUpdateManagedJobPost,
 } from '../../../features/recruitment/managedJobPosts.ts'
 import {
-  employmentTypeLabels,
-  employmentTypes,
-  paymentTypeLabels,
-  paymentTypes,
-} from '../../../features/recruitment/vocabulary.ts'
+  ApplicationStatusBadge,
+  JobPostStatusBadge,
+} from '../../../features/recruitment/StatusBadge.tsx'
 import {
-  staffJobPostFormSchema,
-  useHiringManagers,
-  useRecruiters,
-  type StaffJobPostForm,
-} from '../../../features/recruitment/jobPosts.ts'
-import { problemMessage } from '../../../shared/api/problem.ts'
+  employmentTypeLabels,
+  formatEuros,
+  paymentFrequencyLabels,
+} from '../../../features/recruitment/vocabulary.ts'
 import { useCurrentStaff } from '../../../shared/auth/useCurrentStaff.ts'
 
 const useStyles = makeStyles({
-  main: {
+  // A div, not <main>: the global `main` rule centres its content, and this page is aligned left as in the design.
+  page: {
     width: '100%',
     boxSizing: 'border-box',
-    padding: '48px 32px',
+    padding: '28px 28px 48px',
   },
   back: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '8px',
-    marginBottom: '28px',
-    color: '#475569',
+    gap: '6px',
+    padding: '5px 12px',
+    color: tokens.colorNeutralForeground1,
+    fontSize: '12px',
+    fontWeight: 600,
     textDecoration: 'none',
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    ':hover': {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
   },
   heading: {
-    margin: 0,
-    color: '#1F2933',
-    fontSize: '32px',
-  },
-  subtitle: {
-    margin: '8px 0 32px',
-    color: '#475569',
-  },
-  section: {
-    display: 'grid',
-    gap: '20px',
-    maxWidth: '1000px',
-    padding: '28px',
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #D1D5DB',
-    borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(31, 41, 51, 0.06)',
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: '20px',
-  },
-  field: {
-    display: 'grid',
-    gap: '8px',
-    alignContent: 'start',
-  },
-  input: {
-    width: '100%',
-  },
-  actions: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '12px',
-    marginTop: '24px',
-  },
-  status: {
-    display: 'inline-block',
-    marginBottom: '24px',
-    padding: '6px 12px',
-    borderRadius: '999px',
-    color: '#475569',
-    backgroundColor: '#E8EBEF',
+    margin: '20px 0 0',
+    color: tokens.colorNeutralForeground1,
+    fontSize: '26px',
+    lineHeight: '34px',
     fontWeight: 700,
   },
-  error: {
-    maxWidth: '1000px',
-    marginBottom: '20px',
+  subtitle: {
+    margin: '14px 0 20px',
+    color: tokens.colorNeutralForeground3,
+    fontSize: '13px',
   },
-  '@media (max-width: 700px)': {
-    main: {
-      padding: '36px 24px',
+  card: {
+    display: 'grid',
+    gap: '36px',
+    padding: '36px 20px 40px',
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusLarge,
+    boxShadow: tokens.shadow2,
+  },
+  titleRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '16px',
+    padding: '0 16px',
+  },
+  title: {
+    margin: 0,
+    color: tokens.colorNeutralForeground1,
+    fontSize: '38px',
+    lineHeight: 1.2,
+    fontWeight: 700,
+  },
+  titleActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  facts: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '20px',
+    margin: 0,
+    padding: '0 20px',
+    '@media (max-width: 700px)': {
+      gridTemplateColumns: 'minmax(0, 1fr)',
     },
-    row: {
-      gridTemplateColumns: '1fr',
-    },
+  },
+  fact: {
+    display: 'grid',
+    gap: '6px',
+    margin: 0,
+  },
+  factLabel: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: '12px',
+  },
+  factValue: {
+    margin: 0,
+    color: tokens.colorNeutralForeground1,
+    fontSize: '13px',
+    fontWeight: 600,
+  },
+  description: {
+    padding: '0 20px',
+  },
+  descriptionHeading: {
+    margin: 0,
+    color: tokens.colorNeutralForeground1,
+    fontSize: '18px',
+    fontWeight: 600,
+  },
+  descriptionText: {
+    margin: '4px 0 0',
+    color: tokens.colorNeutralForeground1,
+    fontSize: '13px',
+    lineHeight: 1.5,
+    // The description is plain text; its line breaks are its paragraphs.
+    whiteSpace: 'pre-line',
+  },
+  applicants: {
+    display: 'grid',
+    gap: '16px',
+    paddingTop: '16px',
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  name: {
+    color: tokens.colorNeutralForeground1,
+    fontWeight: 600,
   },
 })
 
-const labels = {
-  draft: 'Koncept',
-  published: 'Zverejnená',
-  closed: 'Uzavretá',
-} as const
-
-type EditableValues = StaffJobPostForm
-
-function getFormValues(post: {
-  title: string
-  location: string
-  department: string
-  description: string
-  openPositions: number
-  salary: number
-  paymentType: StaffJobPostForm['paymentType']
-  employmentType: StaffJobPostForm['employmentType']
-  recruiterId: string
-  hiringManagerId: string
-}): EditableValues {
-  return {
-    title: post.title,
-    location: post.location,
-    department: post.department,
-    description: post.description,
-    openPositions: post.openPositions,
-    salary: post.salary,
-    paymentType: post.paymentType,
-    employmentType: post.employmentType,
-    recruiterId: post.recruiterId,
-    hiringManagerId: post.hiringManagerId,
-  }
-}
-
-/**
- * A post's recruiter or hiring manager, chosen from the staff with that role. When the list does not have the stored
- * person — still loading, failed to load, or they are not (or no longer) staff with the role — the field still shows
- * them as its value, so it never looks empty and an edit never swaps them for someone else unasked, but the open list
- * offers only the people who can be picked.
- */
-function StaffPicker({
-  label,
-  people,
-  currentId,
-  value,
-  disabled,
-  registration,
-  validationState,
-  validationMessage,
-}: {
-  label: string
-  people: UseQueryResult<{ id: string; displayName: string }[]>
-  currentId: string
-  value: string | undefined
-  disabled: boolean
-  registration: UseFormRegisterReturn
-  validationState?: 'error'
-  validationMessage?: string
-}) {
-  const listed = people.data?.some((person) => person.id === currentId)
-  const fallback = people.isPending
-    ? 'Načítava sa…'
-    : people.isError
-      ? 'Zoznam sa nepodarilo načítať'
-      : 'Neznámy používateľ'
-
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  const styles = useStyles()
   return (
-    <Field
-      label={label}
-      required
-      {...(people.isError
-        ? {
-            validationState: 'error' as const,
-            validationMessage: problemMessage(people.error),
-          }
-        : { validationState, validationMessage })}
-    >
-      <Select
-        {...registration}
-        disabled={disabled || people.isPending}
-        value={value}
-      >
-        {/* Shown as the closed field's value, never offered in the list: only people with the role can be picked. */}
-        {!listed && (
-          <option value={currentId} disabled hidden>
-            {fallback}
-          </option>
-        )}
-        {people.data?.map((person) => (
-          <option key={person.id} value={person.id}>
-            {person.displayName}
-          </option>
-        ))}
-      </Select>
-    </Field>
+    <div className={styles.fact}>
+      <dt className={styles.factLabel}>{label}</dt>
+      <dd className={styles.factValue}>{children}</dd>
+    </div>
   )
 }
 
@@ -214,325 +180,207 @@ export function StaffJobPostDetailPage() {
   const { jobPostId = '' } = useParams()
   const { data: post, error, isPending } = useManagedJobPost(jobPostId)
   const { data: me } = useCurrentStaff()
-  const recruiters = useRecruiters(me)
-  const isAdmin = me?.roles.includes('Admin') ?? false
-  const hiringManagers = useHiringManagers(isAdmin)
-  const update = useUpdateManagedJobPost()
-  const close = useCloseManagedJobPost()
-  const reopen = useReopenManagedJobPost()
-  const [editing, setEditing] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
-  const canManage =
-    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ?? false
-  const canEditRecruiter =
-    me?.roles.some((role) => ['HiringManager', 'Admin'].includes(role)) ?? false
 
-  const {
-    control,
-    register,
-    reset,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<EditableValues>({
-    resolver: zodResolver(staffJobPostFormSchema),
-    values: useMemo(() => (post ? getFormValues(post) : undefined), [post]),
-  })
-  const formValues = useWatch({ control })
+  const back = (
+    <Link className={styles.back} to="/staff/jobs">
+      <ChevronLeftRegular aria-hidden="true" /> Späť na pracovné pozície
+    </Link>
+  )
 
-  if (isPending) return <main className={styles.main}>Načítava sa…</main>
-  if (error) {
+  if (isPending) {
     return (
-      <main className={styles.main}>
-        <Link className={styles.back} to="/staff/jobs">
-          <ArrowLeftRegular /> Späť na pracovné ponuky
-        </Link>
-        <MessageBar intent="error">
+      <div className={styles.page}>
+        {back}
+        <p className={styles.subtitle}>Načítava sa…</p>
+      </div>
+    )
+  }
+  if (error || !post) {
+    return (
+      <div className={styles.page}>
+        {back}
+        <h1 className={styles.heading}>Podrobnosti pracovnej pozície</h1>
+        <MessageBar intent="error" style={{ marginTop: 20 }}>
           <MessageBarBody>
-            Pracovnú ponuku sa nepodarilo načítať.
+            {error
+              ? 'Pracovnú pozíciu sa nepodarilo načítať.'
+              : 'Pracovná pozícia nebola nájdená.'}
           </MessageBarBody>
         </MessageBar>
-      </main>
+      </div>
     )
   }
-  if (!post) {
-    return (
-      <main className={styles.main}>
-        <Link className={styles.back} to="/staff/jobs">
-          <ArrowLeftRegular /> Späť na pracovné ponuky
-        </Link>
-        <p>Pracovná ponuka nebola nájdená.</p>
-      </main>
-    )
-  }
-
-  const fieldError = (name: keyof EditableValues) =>
-    errors[name]?.message
-      ? {
-          validationState: 'error' as const,
-          validationMessage: errors[name]?.message,
-        }
-      : {}
-
-  const runCommand = (action: () => void) => {
-    setFailure(null)
-    action()
-  }
-
-  function submit(values: EditableValues) {
-    if (!post) return
-    runCommand(() =>
-      update.mutate(
-        {
-          ...values,
-          recruiterId: canEditRecruiter ? values.recruiterId : post.recruiterId,
-          // Only an admin may change it; anyone else leaves it out and the post keeps its own.
-          hiringManagerId: isAdmin ? values.hiringManagerId : undefined,
-          id: post.id,
-          status: post.status === 'draft' ? 'draft' : 'published',
-          version: post.version,
-        },
-        {
-          onSuccess: () => {
-            setEditing(false)
-            navigate('/staff/jobs')
-          },
-          onError: (submitError) => setFailure(problemMessage(submitError)),
-        },
-      ),
-    )
-  }
-
-  const busy = update.isPending || close.isPending || reopen.isPending
 
   return (
-    <main className={styles.main}>
-      <Link className={styles.back} to="/staff/jobs">
-        <ArrowLeftRegular /> Späť na pracovné ponuky
-      </Link>
-      <h1 className={styles.heading}>{post.title}</h1>
-      <p className={styles.subtitle}>Detail pracovnej ponuky</p>
-      <span className={styles.status}>{labels[post.status]}</span>
-      {failure && (
-        <MessageBar className={styles.error} intent="error">
-          <MessageBarBody>{failure}</MessageBarBody>
-        </MessageBar>
-      )}
-      <form className={styles.section} onSubmit={handleSubmit(submit)}>
-        <div className={styles.row}>
-          <Field label="Názov pozície" required {...fieldError('title')}>
-            <Input
-              {...register('title')}
-              disabled={!editing}
-              value={editing ? formValues.title : post.title}
-            />
-          </Field>
-          <Field label="Lokalita" required {...fieldError('location')}>
-            <Input
-              {...register('location')}
-              disabled={!editing}
-              value={editing ? formValues.location : post.location}
-            />
-          </Field>
-        </div>
-        <div className={styles.row}>
-          <Field label="Oddelenie" required {...fieldError('department')}>
-            <Input
-              {...register('department')}
-              disabled={!editing}
-              value={editing ? formValues.department : post.department}
-            />
-          </Field>
-          <Field label="Typ úväzku" required {...fieldError('employmentType')}>
-            <Select disabled={!editing} {...register('employmentType')}>
-              {employmentTypes.map((type) => (
-                <option key={type} value={type}>
-                  {employmentTypeLabels[type]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        <div className={styles.row}>
-          <Field label="Výška mzdy (EUR)" required {...fieldError('salary')}>
-            <Input
-              {...register('salary', { valueAsNumber: true })}
-              type="number"
-              step="0.01"
-              min="0.01"
-              disabled={!editing}
-              value={String(editing ? formValues.salary : post.salary)}
-            />
-          </Field>
-          <Field
-            label="Frekvencia vyplácania"
-            required
-            {...fieldError('paymentType')}
-          >
-            <Select disabled={!editing} {...register('paymentType')}>
-              {paymentTypes.map((type) => (
-                <option key={type} value={type}>
-                  {paymentTypeLabels[type]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        <div className={styles.row}>
-          <Field
-            label="Počet otvorených miest"
-            required
-            {...fieldError('openPositions')}
-          >
-            <Input
-              {...register('openPositions', { valueAsNumber: true })}
-              type="number"
-              min="1"
-              disabled={!editing}
-              value={String(
-                editing ? formValues.openPositions : post.openPositions,
-              )}
-            />
-          </Field>
-          <StaffPicker
-            label="Recruiter"
-            people={recruiters}
-            currentId={post.recruiterId}
-            value={editing ? formValues.recruiterId : post.recruiterId}
-            disabled={!editing || !canEditRecruiter}
-            registration={register('recruiterId')}
-            {...fieldError('recruiterId')}
-          />
-        </div>
-        {isAdmin && (
-          <div className={styles.row}>
-            <StaffPicker
-              label="Prijímajúci manažér"
-              people={hiringManagers}
-              currentId={post.hiringManagerId}
-              value={
-                editing ? formValues.hiringManagerId : post.hiringManagerId
-              }
-              disabled={!editing}
-              registration={register('hiringManagerId')}
-              {...fieldError('hiringManagerId')}
-            />
-          </div>
-        )}
-        <Field
-          label="Opis pracovnej pozície"
-          required
-          {...fieldError('description')}
-        >
-          <Textarea rows={7} disabled={!editing} {...register('description')} />
-        </Field>
-        {canManage && post.status !== 'closed' && (
-          <div className={styles.actions}>
-            {!editing && (
+    <div className={styles.page}>
+      {back}
+      <h1 className={styles.heading}>Podrobnosti pracovnej pozície</h1>
+      <p className={styles.subtitle}>
+        Detailný popis pracovnej pozície a jej uchádzači.
+      </p>
+      <section className={styles.card} aria-labelledby="job-post-title">
+        <div className={styles.titleRow}>
+          <h2 id="job-post-title" className={styles.title}>
+            {post.title}
+          </h2>
+          <div className={styles.titleActions}>
+            <JobPostStatusBadge status={post.status} />
+            {canManageJobPost(me, post) && (
               <Button
-                type="button"
-                onClick={() => setEditing(true)}
-                disabled={busy}
+                icon={<EditRegular />}
+                onClick={() => void navigate(`/staff/jobs/${post.id}/upravit`)}
               >
                 Upraviť
               </Button>
             )}
-            {editing && (
-              <>
-                <Button type="submit" appearance="primary" disabled={busy}>
-                  Uložiť zmeny
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    reset(getFormValues(post))
-                    setEditing(false)
-                  }}
-                  disabled={busy}
-                >
-                  Zrušiť
-                </Button>
-              </>
-            )}
-            {post.status === 'draft' && !editing && (
-              <Button
-                type="button"
-                appearance="primary"
-                disabled={busy}
-                onClick={() =>
-                  runCommand(() =>
-                    update.mutate(
-                      {
-                        id: post.id,
-                        title: post.title,
-                        location: post.location,
-                        department: post.department,
-                        description: post.description,
-                        status: 'published',
-                        openPositions: post.openPositions,
-                        salary: post.salary,
-                        paymentType: post.paymentType,
-                        employmentType: post.employmentType,
-                        recruiterId: post.recruiterId,
-                        version: post.version,
-                      },
-                      {
-                        onSuccess: () => navigate('/staff/jobs'),
-                        onError: (commandError) =>
-                          setFailure(problemMessage(commandError)),
-                      },
-                    ),
-                  )
-                }
-              >
-                Zverejniť
-              </Button>
-            )}
-            {post.status === 'published' && !editing && (
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  runCommand(() =>
-                    close.mutate(
-                      { jobPostId: post.id, version: post.version },
-                      {
-                        onSuccess: () => navigate('/staff/jobs'),
-                        onError: (commandError) =>
-                          setFailure(problemMessage(commandError)),
-                      },
-                    ),
-                  )
-                }
-              >
-                Uzavrieť
-              </Button>
-            )}
           </div>
-        )}
-        {canManage && post.status === 'closed' && (
-          <div className={styles.actions}>
-            <Button
-              type="button"
-              appearance="primary"
-              disabled={busy}
-              onClick={() =>
-                runCommand(() =>
-                  reopen.mutate(
-                    { jobPostId: post.id, version: post.version },
-                    {
-                      onSuccess: () => navigate('/staff/jobs'),
-                      onError: (commandError) =>
-                        setFailure(problemMessage(commandError)),
-                    },
-                  ),
-                )
-              }
-            >
-              Znovu otvoriť
+        </div>
+        <dl className={styles.facts}>
+          <Fact label="Lokalita">{post.location}</Fact>
+          <Fact label="Typ úväzku">
+            {employmentTypeLabels[post.employmentType]}
+          </Fact>
+          <Fact label="Oddelenie">{post.department}</Fact>
+        </dl>
+        <div className={styles.description}>
+          <h3 className={styles.descriptionHeading}>
+            Podrobnosti pracovnej pozície
+          </h3>
+          <p className={styles.descriptionText}>{post.description}</p>
+        </div>
+        <dl className={styles.facts}>
+          <Fact label="Výška mzdy">od {formatEuros(post.salary)}</Fact>
+          <Fact label="Frekvencia vyplácania">
+            {paymentFrequencyLabels[post.paymentType]}
+          </Fact>
+          <Fact label="Počet otvorených miest">{post.openPositions}</Fact>
+        </dl>
+        <Applicants jobPostId={post.id} />
+      </section>
+    </div>
+  )
+}
+
+/** Applicants per page. */
+const PAGE_SIZE = 20
+
+const statusOptions = applicationStatuses.map((status) => ({
+  value: status,
+  label: applicationStatusLabels[status],
+}))
+
+/** `+421905123456` as people read it, `+421 905 123 456`; another country's number as stored. */
+function formatPhone(phone: string | null) {
+  if (!phone) return '—'
+  const slovak = /^\+421(\d{3})(\d{3})(\d{3})$/.exec(phone)
+  return slovak ? `+421 ${slovak[1]} ${slovak[2]} ${slovak[3]}` : phone
+}
+
+/**
+ * The post's applicants: searched by name (forgiving accents and a typo) or e-mail, filtered by state, newest or
+ * oldest first, a page at a time. The search, filter and page are in the URL, like the job post list's.
+ */
+function Applicants({ jobPostId }: { jobPostId: string }) {
+  const styles = useStyles()
+  const { data: me } = useCurrentStaff()
+  // Recruiters and admins add applicants by hand (roles-permissions.md §3); the API enforces it, here it shapes the UI.
+  const canCreateApplicant =
+    me?.roles.some((role) => ['Recruiter', 'Admin'].includes(role)) ?? false
+  // The applicant list has no best-match sort, only newest or oldest first.
+  const list = useJobPostListParams({ relevance: false })
+  const statuses = listParam(list.params, 'stav', applicationStatuses)
+  const { data, error, isPending, isPlaceholderData } = useJobPostApplications(
+    jobPostId,
+    {
+      offset: (list.page - 1) * PAGE_SIZE,
+      limit: PAGE_SIZE,
+      search: list.search || undefined,
+      statuses,
+      sort: list.sort === 'oldest' ? 'oldest' : 'newest',
+    },
+  )
+
+  const activeFilters = statuses.length + Number(list.sort !== 'newest')
+  const message = isPending
+    ? 'Načítava sa…'
+    : error
+      ? 'Uchádzačov sa nepodarilo načítať.'
+      : data.items.length > 0
+        ? undefined
+        : data.total > 0
+          ? 'Na tejto strane už nie sú žiadni uchádzači.'
+          : list.search || statuses.length > 0
+            ? 'Nenašli sa žiadni uchádzači.'
+            : 'Na túto pozíciu sa zatiaľ nikto neprihlásil.'
+
+  const columns: ListColumn<ApplicationListItem>[] = [
+    {
+      header: 'Meno',
+      render: (a) => <span className={styles.name}>{a.firstName}</span>,
+    },
+    {
+      header: 'Priezvisko',
+      render: (a) => <span className={styles.name}>{a.lastName}</span>,
+    },
+    { header: 'E-mail', render: (a) => a.email },
+    { header: 'Telefón', render: (a) => formatPhone(a.phoneNumber) },
+    {
+      header: 'Stav',
+      render: (a) => <ApplicationStatusBadge status={a.status} />,
+    },
+  ]
+
+  return (
+    <div className={styles.applicants}>
+      <JobPostListToolbar
+        searchInput={list.searchInput}
+        onSearchInput={list.setSearchInput}
+        searchPlaceholder="Hľadať podľa mena alebo e-mailu"
+        searchLabel="Hľadať uchádzačov"
+        sticky={false}
+        narrowSearch
+        action={
+          canCreateApplicant && (
+            // TODO: open the manual candidate form once `POST …/applications` for staff exists (roles-permissions.md §7).
+            <Button appearance="primary" size="large" icon={<AddRegular />}>
+              Vytvoriť kandidáta
             </Button>
-          </div>
-        )}
-      </form>
-    </main>
+          )
+        }
+        activeFilters={activeFilters}
+        onClearFilters={() => list.clearFilters({ stav: undefined })}
+      >
+        <FilterChecks
+          label="Stav"
+          values={statuses}
+          options={statusOptions}
+          onToggle={(status) =>
+            list.toggle('stav', applicationStatuses, status)
+          }
+        />
+        <FilterChoice
+          label="Zoradiť"
+          value={list.sort}
+          options={sortOptions(false)}
+          onChange={list.setSort}
+        />
+      </JobPostListToolbar>
+      <ListTable
+        columns={columns}
+        items={data?.items ?? []}
+        message={message}
+        busy={isPlaceholderData}
+      />
+      {data && (
+        <JobPostPager
+          page={list.page}
+          offset={data.offset}
+          shown={data.items.length}
+          total={data.total}
+          disabled={isPlaceholderData}
+          onPage={list.setPage}
+        />
+      )}
+    </div>
   )
 }

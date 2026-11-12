@@ -21,12 +21,15 @@ internal sealed class ApplicationConfiguration : IEntityTypeConfiguration<Applic
         b.Property(a => a.Email).HasColumnName("email");
         b.Property(a => a.PhoneNumber).HasColumnName("phone_number");
         b.Property(a => a.Status).HasColumnName("status");
+        b.Property(a => a.IsManual).HasColumnName("is_manual");
 
         b.HasOne<JobPost>().WithMany().HasForeignKey(a => a.JobPostId).OnDelete(DeleteBehavior.Restrict);
         b.HasMany(a => a.Documents).WithOne().HasForeignKey(d => d.ApplicationId).OnDelete(DeleteBehavior.Cascade);
 
-        // The column default and the audit trigger own these (conventions.md § Audit columns); no created_by (ADR-D008).
+        // The column default and the audit trigger own these (conventions.md § Audit columns). created_by only on a
+        // manual application (ADR-D011): a submitted one has no user to name (ADR-D008).
         b.Property(a => a.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+        b.Property(a => a.CreatedBy).HasColumnName("created_by");
         b.Property(a => a.UpdatedAt).HasColumnName("updated_at").ValueGeneratedOnUpdate();
         b.Property(a => a.UpdatedBy).HasColumnName("updated_by");
         b.Property(a => a.Version).HasColumnName("version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate();

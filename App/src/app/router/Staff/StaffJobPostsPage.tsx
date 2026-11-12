@@ -1,5 +1,6 @@
-import { Button, makeStyles, mergeClasses } from '@fluentui/react-components'
-import { AddRegular } from '@fluentui/react-icons'
+import { Button, makeStyles } from '@fluentui/react-components'
+import { AddRegular, EditRegular } from '@fluentui/react-icons'
+import { Link } from 'react-router'
 import {
   FilterChecks,
   FilterChoice,
@@ -15,52 +16,42 @@ import {
   useJobPostListParams,
 } from '../../../features/recruitment/jobPostList/useJobPostListParams.ts'
 import {
-  useManagedJobPosts,
+  canManageJobPost,
   managedJobPostStatuses,
-  type ManagedJobPostStatus,
+  managedJobPostStatusLabels,
+  useManagedJobPosts,
 } from '../../../features/recruitment/managedJobPosts.ts'
+import { JobPostStatusBadge } from '../../../features/recruitment/StatusBadge.tsx'
 import { ApiError } from '../../../shared/api/http.ts'
 import { useCurrentStaff } from '../../../shared/auth/useCurrentStaff.ts'
 
-const useStyles = makeStyles({
-  status: {
-    display: 'inline-block',
-    padding: '7px 14px',
-    borderRadius: '999px',
-    fontSize: '13px',
-    fontWeight: 700,
-    whiteSpace: 'nowrap',
-  },
-  draft: {
-    color: '#6B4E00',
-    backgroundColor: '#FFF4CC',
-  },
-  published: {
-    color: '#146C43',
-    backgroundColor: '#D9F5E5',
-  },
-  closed: {
-    color: '#5B6470',
-    backgroundColor: '#E8EBEF',
+const useEditStyles = makeStyles({
+  edit: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    borderRadius: '6px',
+    color: '#475569',
+    fontSize: '20px',
+    ':hover': {
+      color: '#1F2933',
+      backgroundColor: '#F1F3F5',
+    },
   },
 })
 
-const statusLabels: Record<ManagedJobPostStatus, string> = {
-  draft: 'Koncept',
-  published: 'Zverejnená',
-  closed: 'Uzavretá',
-}
-
 const statusOptions = managedJobPostStatuses.map((status) => ({
   value: status,
-  label: statusLabels[status],
+  label: managedJobPostStatusLabels[status],
 }))
 
 /** Posts per page. */
 const PAGE_SIZE = 20
 
 export function StaffJobPostsPage() {
-  const styles = useStyles()
+  const editStyles = useEditStyles()
   const list = useJobPostListParams()
   const statuses = listParam(list.params, 'stav', managedJobPostStatuses)
   const { data, error, isPending, isPlaceholderData } = useManagedJobPosts({
@@ -141,12 +132,20 @@ export function StaffJobPostsPage() {
         linkTo={(post) => `/staff/jobs/${post.id}`}
         extraColumn={{
           header: 'Stav',
-          render: (post) => (
-            <span className={mergeClasses(styles.status, styles[post.status])}>
-              {statusLabels[post.status]}
-            </span>
-          ),
+          render: (post) => <JobPostStatusBadge status={post.status} />,
         }}
+        actions={(post) =>
+          canManageJobPost(me, post) && (
+            <Link
+              className={editStyles.edit}
+              to={`/staff/jobs/${post.id}/upravit`}
+              aria-label={`Upraviť pozíciu ${post.title}`}
+              title="Upraviť"
+            >
+              <EditRegular aria-hidden="true" />
+            </Link>
+          )
+        }
         message={message}
         busy={isPlaceholderData}
       />

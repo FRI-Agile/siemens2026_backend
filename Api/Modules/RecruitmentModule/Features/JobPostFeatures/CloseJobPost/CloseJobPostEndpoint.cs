@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using RecruitmentModule.Infrastructure.Authorization;
 
 namespace RecruitmentModule.Features.JobPostFeatures.CloseJobPost;
 
@@ -16,10 +18,11 @@ internal sealed class CloseJobPostEndpoint : IEndpoint
             .MapPost("/{jobPostId:guid}/close", static async (
                 Guid jobPostId,
                 CloseJobPostRequest request,
+                ClaimsPrincipal user,
                 ICommandHandler<CloseJobPostCommand, CloseJobPostResponse> handler,
                 CancellationToken ct) =>
             {
-                CloseJobPostCommand command = new() { JobPostId = jobPostId, Version = request.Version }; // manual map (ADR-A012)
+                CloseJobPostCommand command = new() { JobPostId = jobPostId, Access = JobPostAccess.Of(user), Version = request.Version }; // manual map (ADR-A012)
                 return Results.Ok(await handler.HandleAsync(command, ct));
             })
             .WithName("CloseJobPost")

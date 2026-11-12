@@ -35,7 +35,7 @@ internal sealed class ListApplicationsEndpoint : IEndpoint
                     Offset = request.Offset ?? 0,
                     Limit = request.Limit ?? ListApplicationsQuery.DefaultLimit,
                     Search = request.Search,
-                    Status = request.Status,
+                    Statuses = request.Statuses ?? [],
                     Sort = request.Sort ?? ApplicationSorts.Newest,
                 };
                 return Results.Ok(await handler.HandleAsync(query, ct));

@@ -59,10 +59,19 @@ const euroCents = new Intl.NumberFormat('sk-SK', {
   maximumFractionDigits: 2,
 })
 
+/** An amount in euros as people read it: `1 400 €`, `8,50 €`; cents only when there are any. */
+export function formatEuros(amount: number): string {
+  return `${Number.isInteger(amount) ? wholeEuros.format(amount) : euroCents.format(amount)} €`
+}
+
 /** A wage as people read it: `1 400 €/mesiac`, `8,50 €/hod.`; cents only when there are any. */
 export function formatSalary(salary: number, paymentType: PaymentType): string {
-  const amount = Number.isInteger(salary)
-    ? wholeEuros.format(salary)
-    : euroCents.format(salary)
-  return `${amount} €/${salaryUnits[paymentType]}`
+  return `${formatEuros(salary)}/${salaryUnits[paymentType]}`
+}
+
+/** How often the wage is paid, as the job post detail says it. */
+export const paymentFrequencyLabels: Record<PaymentType, string> = {
+  monthly: 'Mesačne',
+  hourly: 'Hodinovo',
+  yearly: 'Ročne',
 }

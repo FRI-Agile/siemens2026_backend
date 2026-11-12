@@ -117,12 +117,10 @@ Where the code (Recruitment module) differs from the model above:
 
 | Area | Model | Code today |
 | ---- | ----- | ---------- |
-| Managed job post list (`POST /job-posts/manage/search`) | Hiring manager sees own posts, recruiter assigned ones | Hiring managers and admins only (`staff-hiring-manager`), and every hiring manager sees every post |
-| Edit, close, reopen a post | Hiring manager: own posts only | Any hiring manager, any post |
-| Change the hiring manager of a post | Admin | Not possible: `PUT /job-posts/{id}` keeps the hiring manager it was created with |
 | Candidate list (`ListApplications`) | Hiring manager does not see `nová žiadosť` | Reach is enforced (`JobPostAccess`), but the hiring manager sees `nová žiadosť` too |
 | Candidate status change | [§4](#4-candidate-status) | Not implemented |
-| Manual candidate create, candidate update | Recruiter, Admin | Not implemented |
+| Candidate update | Recruiter, Admin | Not implemented |
+| Attaching documents to a manually created candidate | Recruiter, Admin | Not implemented: `POST /applications` creates the candidate without documents |
 
 ## 8. Open questions
 

@@ -19,14 +19,18 @@ using Tests.Shared;
 namespace Tests.RecruitmentModule.Features.JobPostFeatures;
 
 /// <summary>
-/// <c>POST /job-posts</c>, <c>POST /job-posts/manage/search</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and
-/// <c>reopen</c> for hiring managers (and administrators) only; <c>POST /job-posts/search</c> and
+/// <c>POST /job-posts</c>, <c>PUT /job-posts/{id}</c> and its <c>close</c> and <c>reopen</c> for hiring managers (and
+/// administrators) only; <c>POST /job-posts/manage/search</c> for any staff member, within their reach;
+/// <c>POST /job-posts/search</c> and
 /// <c>GET /job-posts/{id}</c> for anyone, signed in or not.
 /// </summary>
 public class JobPostEndpointTests
 {
     private static readonly StaffMember Recruiter = new(Guid.NewGuid(), "Jana Nováková", [StaffRoles.Recruiter]);
     private static readonly StaffMember Manager = new(Guid.NewGuid(), "Peter Horváth", [StaffRoles.HiringManager]);
+
+    /// <summary>The caller every test token names (<see cref="StaffTokens.ObjectId"/>), as a recruiter posts can be assigned to.</summary>
+    private static readonly StaffMember Caller = new(Guid.Parse(StaffTokens.ObjectId), "Ján Kováč", [StaffRoles.Recruiter]);
 
     private static readonly object CreateBody = new
     {
@@ -78,7 +82,7 @@ public class JobPostEndpointTests
         builder.Services.AddDbContext<RecruitmentDbContext>(o => o.UseNpgsql(connectionString));
         builder.Services.AddCqrsHandlers(typeof(CreateJobPostHandler).Assembly);
         builder.Services.AddCqrsDecorators();
-        builder.Services.AddSingleton<IStaffDirectory>(new FakeStaffDirectory { Staff = { Recruiter, Manager } });
+        builder.Services.AddSingleton<IStaffDirectory>(new FakeStaffDirectory { Staff = { Recruiter, Manager, Caller } });
 
         WebApplication app = builder.Build();
         app.UseExceptionHandler();
@@ -286,17 +290,35 @@ public class JobPostEndpointTests
     }
 
     [Fact]
-    public async Task Only_hiring_managers_list_the_posts_they_manage()
+    public async Task A_recruiter_lists_only_the_posts_assigned_to_them()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using WebApplication app = await StartHostAsync(ct);
+        using HttpClient admin = As(app, StaffRoles.Admin);
         using HttpClient recruiter = As(app, StaffRoles.Recruiter);
+        JsonObject theirs = CreateBodyFor(StaffRoles.Admin);
+        theirs["recruiterId"] = Caller.Id;
+        using HttpResponseMessage someoneElses = await admin.PostAsJsonAsync("/job-posts", CreateBodyFor(StaffRoles.Admin), ct);
+        using HttpResponseMessage assigned = await admin.PostAsJsonAsync("/job-posts", theirs, ct);
+        Assert.Equal((HttpStatusCode.Created, HttpStatusCode.Created), (someoneElses.StatusCode, assigned.StatusCode));
+
+        using HttpResponseMessage response = await SearchAsync(recruiter, "/job-posts/manage/search", "{}", ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        JsonElement page = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
+        Assert.Equal(1, page.GetProperty("total").GetInt32());
+        Assert.Equal(Caller.Id, page.GetProperty("items")[0].GetProperty("recruiterId").GetGuid());
+    }
+
+    [Fact]
+    public async Task Without_a_token_the_managed_list_is_401()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using WebApplication app = await StartHostAsync(ct);
         using HttpClient anonymous = StaffTokens.Client(app);
 
-        using HttpResponseMessage forbidden = await SearchAsync(recruiter, "/job-posts/manage/search", "{}", ct);
         using HttpResponseMessage unauthorized = await SearchAsync(anonymous, "/job-posts/manage/search", "{}", ct);
 
-        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
     }
 

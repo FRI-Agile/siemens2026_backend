@@ -3,9 +3,11 @@ using Kernel.Auth;
 using Kernel.CQRS;
 using Kernel.Exceptions;
 using Kernel.Validation;
+using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
+using RecruitmentModule.Infrastructure.Authorization;
 using RecruitmentModule.Infrastructure.Entra;
 using ValidationException = Kernel.Exceptions.ValidationException;
 
@@ -22,6 +24,9 @@ public sealed record UpdateJobPostCommand : ICommand
 
     /// <summary>The post to edit, from the route.</summary>
     public Guid JobPostId { get; init; }
+
+    /// <summary>Which posts the caller may change, from their token; any other post answers <c>404</c>.</summary>
+    public required JobPostAccess Access { get; init; }
 
     [Required, StringLength(200)]
     public string Title { get; init; } = string.Empty;
@@ -105,7 +110,9 @@ internal sealed class UpdateJobPostHandler(RecruitmentDbContext db, IStaffDirect
 {
     public async Task<UpdateJobPostResponse> HandleAsync(UpdateJobPostCommand command, CancellationToken ct = default)
     {
-        JobPost post = await db.JobPosts.FindAsync([command.JobPostId], ct)
+        // A post outside the caller's reach answers like one that does not exist, so its existence is not disclosed.
+        JobPost post = await command.Access.Manageable(db.JobPosts)
+            .SingleOrDefaultAsync(p => p.Id == command.JobPostId, ct)
             ?? throw new NotFoundException("Pracovná ponuka neexistuje.");
 
         // The save then updates only `WHERE version = <the caller's>`, so a post changed since the caller read it is a 409.

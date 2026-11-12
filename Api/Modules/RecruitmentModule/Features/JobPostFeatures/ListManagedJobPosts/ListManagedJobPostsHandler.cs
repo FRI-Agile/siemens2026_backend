@@ -5,12 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Infrastructure;
+using RecruitmentModule.Infrastructure.Authorization;
 using EmploymentTypeCodes = RecruitmentModule.Domain.EmploymentTypes;
 
 namespace RecruitmentModule.Features.JobPostFeatures.ListManagedJobPosts;
 
 /// <summary>
-/// One page of every job post, whatever its status, newest first unless sorted otherwise, optionally filtered; for staff managing them.
+/// One page of the job posts within the caller's reach, whatever their status, newest first unless sorted otherwise,
+/// optionally filtered; for staff managing them.
 /// The attributes are the rules: the request schema copies them, and the query validation decorator enforces them.
 /// </summary>
 public sealed record ListManagedJobPostsQuery
@@ -23,6 +25,9 @@ public sealed record ListManagedJobPostsQuery
 
     /// <summary>The longest search text.</summary>
     public const int MaxSearchLength = 200;
+
+    /// <summary>Which posts the caller may see, from their token.</summary>
+    public required JobPostAccess Access { get; init; }
 
     /// <summary>How many matching posts to skip.</summary>
     [Range(0, int.MaxValue, ErrorMessage = "Hodnota musí byť aspoň 0.")]
@@ -96,7 +101,7 @@ internal sealed class ListManagedJobPostsHandler(RecruitmentDbContext db)
     {
         JobPostQueryExtensions.EnsureSortFits(query.Sort, query.Search);
 
-        IQueryable<JobPost> posts = db.JobPosts.AsNoTracking().MatchingSearch(query.Search, query.Sort);
+        IQueryable<JobPost> posts = query.Access.Filter(db.JobPosts.AsNoTracking()).MatchingSearch(query.Search, query.Sort);
 
         if (query.Statuses.Count > 0)
             posts = posts.Where(p => query.Statuses.Contains(p.Status));

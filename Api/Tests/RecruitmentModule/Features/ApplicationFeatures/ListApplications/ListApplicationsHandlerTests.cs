@@ -69,6 +69,7 @@ public class ListApplicationsHandlerTests
         Assert.Equal(["Ďurišová", "Hudák", "Štefániková", "Kašuba"], page.Items.Select(i => i.LastName));
         ApplicationListItem martin = page.Items[^1];
         Assert.Equal(("Martin", "kasuba7@stud.uniza.sk", ApplicationStatuses.New, Start), (martin.FirstName, martin.Email, martin.Status, martin.CreatedAt));
+        Assert.Equal("+421905123456", martin.PhoneNumber);
     }
 
     [Fact]
@@ -86,17 +87,20 @@ public class ListApplicationsHandlerTests
     }
 
     [Fact]
-    public async Task Filters_by_state()
+    public async Task Filters_by_any_of_the_states()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost post = await SeedAsync(db, ct, Pipeline);
 
         ListApplicationsResponse page = await new ListApplicationsHandler(db).HandleAsync(
-            Query(post) with { Status = ApplicationStatuses.Screening }, ct);
+            Query(post) with { Statuses = [ApplicationStatuses.Screening] }, ct);
+        ListApplicationsResponse two = await new ListApplicationsHandler(db).HandleAsync(
+            Query(post) with { Statuses = [ApplicationStatuses.Screening, ApplicationStatuses.Interview] }, ct);
 
         Assert.Equal(2, page.Total);
         Assert.Equal(["Ďurišová", "Štefániková"], page.Items.Select(i => i.LastName));
+        Assert.Equal(["Ďurišová", "Hudák", "Štefániková"], two.Items.Select(i => i.LastName));
     }
 
     [Theory]
@@ -177,10 +181,10 @@ public class ListApplicationsHandlerTests
         // The rules the query validation decorator enforces before the handler runs.
         IReadOnlyDictionary<string, string[]>? errors = CommandValidation.Run(Query(JobPostSeed.Post("Product Owner")) with
         {
-            Offset = -1, Limit = 101, Status = "new", Sort = "relevance", Search = new string('a', 201),
+            Offset = -1, Limit = 101, Statuses = [ApplicationStatuses.New, "new"], Sort = "relevance", Search = new string('a', 201),
         });
 
-        Assert.Equal(["Limit", "Offset", "Search", "Sort", "Status"], errors!.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["Limit", "Offset", "Search", "Sort", "Statuses"], errors!.Keys.Order(StringComparer.Ordinal));
         Assert.True(CommandValidation.IsValid(Query(JobPostSeed.Post("Product Owner"))));
     }
 

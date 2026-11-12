@@ -5,6 +5,7 @@ using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Features.JobPostFeatures.UpdateJobPost;
 using RecruitmentModule.Infrastructure;
+using RecruitmentModule.Infrastructure.Authorization;
 using RecruitmentModule.Infrastructure.Entra;
 using Tests.RecruitmentModule.Infrastructure.Entra;
 using Tests.Shared;
@@ -34,6 +35,7 @@ public class UpdateJobPostHandlerTests
     private static UpdateJobPostCommand Edit(JobPost post) => new()
     {
         JobPostId = post.Id,
+        Access = JobPostSeed.ManagerOf(post),
         Title = "Elektrotechnik údržby (zmena)",
         Location = "Trnava",
         Department = "Výroba",
@@ -211,6 +213,36 @@ public class UpdateJobPostHandlerTests
         JobPost unsaved = JobPostSeed.Post("Neuložená");
 
         await Assert.ThrowsAsync<NotFoundException>(() => Handler(db).HandleAsync(Edit(unsaved), ct));
+    }
+
+    [Fact]
+    public async Task Another_hiring_managers_or_a_recruiters_post_is_404_and_unchanged()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+        JobPostAccess anotherManager = new(OtherManager.Id, All: false, Assigned: false, Managed: true);
+        JobPostAccess itsRecruiter = new(post.RecruiterId, All: false, Assigned: true, Managed: false);
+
+        foreach (JobPostAccess access in new[] { anotherManager, itsRecruiter })
+            await Assert.ThrowsAsync<NotFoundException>(
+                () => Handler(db).HandleAsync(Edit(post) with { Access = access }, ct));
+
+        await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+        Assert.Equal(post.Title, (await read.JobPosts.SingleAsync(ct)).Title);
+    }
+
+    [Fact]
+    public async Task An_administrator_edits_any_post()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Published, ct);
+
+        UpdateJobPostResponse response = await AdminHandler(db).HandleAsync(
+            Edit(post) with { Access = JobPostSeed.AdminAccess, NamesHiringManager = true }, ct);
+
+        Assert.Equal("Elektrotechnik údržby (zmena)", response.Title);
     }
 
     [Fact]

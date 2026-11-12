@@ -112,8 +112,8 @@ public class ListApplicationsEndpointTests
         using HttpClient client = As(app, StaffRoles.Admin);
 
         using HttpResponseMessage found = await SearchAsync(client, post,
-            """{ "offset": 0, "limit": 10, "search": "kasubo", "status": "nová žiadosť", "sort": "oldest" }""", ct);
-        using HttpResponseMessage none = await SearchAsync(client, post, """{ "status": "prijatý" }""", ct);
+            """{ "offset": 0, "limit": 10, "search": "kasubo", "statuses": ["nová žiadosť"], "sort": "oldest" }""", ct);
+        using HttpResponseMessage none = await SearchAsync(client, post, """{ "statuses": ["prijatý"] }""", ct);
 
         JsonElement page = JsonDocument.Parse(await found.Content.ReadAsStringAsync(ct)).RootElement;
         Assert.Equal((1, "oldest"), (page.GetProperty("total").GetInt32(), page.GetProperty("sort").GetString()));

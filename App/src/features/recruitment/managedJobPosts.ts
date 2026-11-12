@@ -3,12 +3,20 @@ import { request } from '../../shared/api/http.ts'
 import { useCommand } from '../../shared/api/useCommand.ts'
 import { getAccessToken } from '../../shared/auth/staffAuth.ts'
 import { useStaffAuth } from '../../shared/auth/StaffAuthContext.ts'
+import type { CurrentStaff } from '../../shared/auth/useCurrentStaff.ts'
 import type { EmploymentType, JobPostSort, PaymentType } from './vocabulary.ts'
 
 /** Mirrors `JobPostStatuses` in RecruitmentVocabulary.cs. */
 export const managedJobPostStatuses = ['draft', 'published', 'closed'] as const
 
 export type ManagedJobPostStatus = (typeof managedJobPostStatuses)[number]
+
+export const managedJobPostStatusLabels: Record<ManagedJobPostStatus, string> =
+  {
+    draft: 'Koncept',
+    published: 'Zverejnená',
+    closed: 'Uzavretá',
+  }
 
 export interface ManagedJobPost {
   id: string
@@ -28,6 +36,21 @@ export interface ManagedJobPost {
   updatedAt: string | null
   updatedBy: string | null
   version: number
+}
+
+/**
+ * Whether `staff` may edit, publish, close and reopen `post`: an admin every post, a hiring manager the posts they are
+ * the hiring manager of. The API enforces the same rule (`JobPostAccess.Manageable`); here it only shapes the UI.
+ */
+export function canManageJobPost(
+  staff: CurrentStaff | undefined,
+  post: Pick<ManagedJobPost, 'hiringManagerId'>,
+): boolean {
+  if (!staff) return false
+  return (
+    staff.roles.includes('Admin') ||
+    (staff.roles.includes('HiringManager') && post.hiringManagerId === staff.id)
+  )
 }
 
 export interface ManagedJobPostPage {

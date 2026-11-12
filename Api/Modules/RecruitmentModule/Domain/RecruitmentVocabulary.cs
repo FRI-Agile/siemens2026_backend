@@ -27,6 +27,9 @@ public static class ModuleEvents
 
     /// <summary>A candidate applied to a published job post through the public form.</summary>
     public const string ApplicationSubmitted = "application_submitted";
+
+    /// <summary>A recruiter or an administrator added an applicant to a published job post by hand.</summary>
+    public const string ApplicationCreatedManually = "application_created_manually";
 }
 
 /// <summary>Where a job post is in its life (<c>job_post.status</c>).</summary>

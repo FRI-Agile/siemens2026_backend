@@ -4,6 +4,7 @@ using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
 using RecruitmentModule.Features.JobPostFeatures.CloseJobPost;
 using RecruitmentModule.Infrastructure;
+using RecruitmentModule.Infrastructure.Authorization;
 using Tests.Shared;
 using Tests.Shared.Auth;
 
@@ -30,7 +31,7 @@ public class CloseJobPostHandlerTests
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
         JobPost post = await SeedAsync(db, JobPostStatuses.Published, ct);
 
-        CloseJobPostResponse response = await Handler(db).HandleAsync(new() { JobPostId = post.Id, Version = 1 }, ct);
+        CloseJobPostResponse response = await Handler(db).HandleAsync(new() { Access = JobPostSeed.ManagerOf(post), JobPostId = post.Id, Version = 1 }, ct);
 
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
         JobPost stored = await read.JobPosts.SingleAsync(ct);
@@ -51,7 +52,7 @@ public class CloseJobPostHandlerTests
         JobPost post = await SeedAsync(db, status, ct);
 
         await Assert.ThrowsAsync<ConflictException>(
-            () => Handler(db).HandleAsync(new() { JobPostId = post.Id, Version = 1 }, ct));
+            () => Handler(db).HandleAsync(new() { Access = JobPostSeed.ManagerOf(post), JobPostId = post.Id, Version = 1 }, ct));
 
         await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
         Assert.Equal(status, (await read.JobPosts.SingleAsync(ct)).Status);
@@ -65,7 +66,7 @@ public class CloseJobPostHandlerTests
         JobPost post = await SeedAsync(db, JobPostStatuses.Published, ct);
 
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
-            () => Handler(db).HandleAsync(new() { JobPostId = post.Id, Version = 2 }, ct));
+            () => Handler(db).HandleAsync(new() { Access = JobPostSeed.ManagerOf(post), JobPostId = post.Id, Version = 2 }, ct));
     }
 
     [Fact]
@@ -75,12 +76,42 @@ public class CloseJobPostHandlerTests
         await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => Handler(db).HandleAsync(new() { JobPostId = Guid.NewGuid(), Version = 1 }, ct));
+            () => Handler(db).HandleAsync(new() { Access = JobPostSeed.AdminAccess, JobPostId = Guid.NewGuid(), Version = 1 }, ct));
+    }
+
+    [Fact]
+    public async Task Another_hiring_managers_or_a_recruiters_post_is_404_and_unchanged()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Published, ct);
+        JobPostAccess anotherManager = new(Guid.NewGuid(), All: false, Assigned: false, Managed: true);
+        JobPostAccess itsRecruiter = new(post.RecruiterId, All: false, Assigned: true, Managed: false);
+
+        foreach (JobPostAccess access in new[] { anotherManager, itsRecruiter })
+            await Assert.ThrowsAsync<NotFoundException>(
+                () => Handler(db).HandleAsync(new() { Access = access, JobPostId = post.Id, Version = 1 }, ct));
+
+        await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+        Assert.Equal(JobPostStatuses.Published, (await read.JobPosts.SingleAsync(ct)).Status);
+    }
+
+    [Fact]
+    public async Task An_administrator_closes_any_post()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Published, ct);
+
+        CloseJobPostResponse response = await Handler(db).HandleAsync(
+            new() { Access = JobPostSeed.AdminAccess, JobPostId = post.Id, Version = 1 }, ct);
+
+        Assert.Equal(JobPostStatuses.Closed, response.Status);
     }
 
     [Fact]
     public void A_version_is_required()
     {
-        Assert.False(CommandValidation.IsValid(new CloseJobPostCommand { JobPostId = Guid.NewGuid() }));
+        Assert.False(CommandValidation.IsValid(new CloseJobPostCommand { Access = JobPostSeed.AdminAccess, JobPostId = Guid.NewGuid() }));
     }
 }

@@ -195,3 +195,25 @@ applications with one e-mail, and a rule that a later application must not chang
 - Erasing a person's data (GDPR) means deleting their applications by e-mail, each publishing `files_released`.
 - Should a cross-post view ever be needed, it can group applications by `lower(email)`, which the unique index's
   expression already supports per post.
+
+---
+
+## ADR-D011 — Staff can add an applicant by hand, recorded with `is_manual` and `created_by`
+
+**Date:** 2026-11-12 · **Status:** accepted · **Amends:** ADR-D008
+
+A recruiter sometimes gets a candidate outside the public form: details sent by e-mail, or a referral from an
+employee. They add the candidate to a published post assigned to them (an administrator to any published post), and
+it then goes through the pipeline like a submitted application.
+
+- The row stays in `recruitment.application`: a manual candidate is an application to one post like any other
+  (ADR-D010), and the same `uq_application_job_post_id_email` refuses a second one with the same e-mail on that post,
+  whichever way either came in.
+- `is_manual BOOLEAN NOT NULL DEFAULT false` marks it, so staff can tell it was not submitted by the candidate.
+- A manual row has a user to name, so `application` gains a nullable `created_by`: set on every manual row, `NULL` on
+  every submitted one, and `application_manual_has_creator` (`is_manual = (created_by IS NOT NULL)`) keeps the two
+  together. ADR-D008 still holds for the submitted rows, which have no user; the column being `NULL` there now says
+  "submitted", not a missing value.
+- It starts in `nová žiadosť`, like a submitted application, and carries no documents when created: they are attached
+  afterwards, as a separate step.
+

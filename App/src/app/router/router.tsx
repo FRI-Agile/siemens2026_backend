@@ -72,6 +72,13 @@ export const router = createBrowserRouter([
             Component: m.StaffJobPostDetailPage,
           })),
       },
+      {
+        path: 'jobs/:jobPostId/upravit',
+        lazy: () =>
+          import('./Staff/StaffJobPostEditPage.tsx').then((m) => ({
+            Component: m.StaffJobPostEditPage,
+          })),
+      },
     ],
   },
   { path: '*', Component: NotFoundPage },

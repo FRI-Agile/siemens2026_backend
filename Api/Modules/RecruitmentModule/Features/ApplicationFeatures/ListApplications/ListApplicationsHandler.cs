@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Kernel.CQRS;
 using Kernel.Exceptions;
+using Kernel.Validation;
 using Microsoft.EntityFrameworkCore;
 using RecruitmentModule.Domain;
 using RecruitmentModule.Domain.Entity;
@@ -42,11 +43,11 @@ public sealed record ListApplicationsQuery
     [StringLength(MaxSearchLength)]
     public string? Search { get; init; }
 
-    /// <summary>Only applications in this state; every state when <c>null</c>.</summary>
-    [AllowedValues(
+    /// <summary>Only applications in one of these states; every state when empty.</summary>
+    [AllowedItems(
         ApplicationStatuses.New, ApplicationStatuses.Screening, ApplicationStatuses.Interview, ApplicationStatuses.Offer,
-        ApplicationStatuses.Hired, ApplicationStatuses.Rejected, null)]
-    public string? Status { get; init; }
+        ApplicationStatuses.Hired, ApplicationStatuses.Rejected)]
+    public IReadOnlyList<string> Statuses { get; init; } = [];
 
     /// <summary><see cref="ApplicationSorts.Newest"/> or <see cref="ApplicationSorts.Oldest"/> first.</summary>
     [AllowedValues(ApplicationSorts.Newest, ApplicationSorts.Oldest)]
@@ -60,10 +61,13 @@ public sealed record ListApplicationsResponse(
     IReadOnlyList<ApplicationListItem> Items, int Total, int Offset, int Limit, string Sort);
 
 /// <summary>One applicant in the post's list.</summary>
+/// <param name="PhoneNumber">In E.164 (<c>+421…</c>); <c>null</c> when the applicant gave none.</param>
 /// <param name="Status">Where the application is in the pipeline, e.g. <c>nová žiadosť</c>.</param>
-/// <param name="CreatedAt">When it was submitted, which the list is sorted by.</param>
+/// <param name="IsManual">Added by a recruiter or an administrator by hand rather than submitted through the form.</param>
+/// <param name="CreatedAt">When it was submitted or added, which the list is sorted by.</param>
 public sealed record ApplicationListItem(
-    Guid Id, string FirstName, string LastName, string Email, string Status, DateTimeOffset CreatedAt);
+    Guid Id, string FirstName, string LastName, string Email, string? PhoneNumber, string Status, bool IsManual,
+    DateTimeOffset CreatedAt);
 
 internal sealed class ListApplicationsHandler(RecruitmentDbContext db)
     : IQueryHandler<ListApplicationsQuery, ListApplicationsResponse>
@@ -78,8 +82,8 @@ internal sealed class ListApplicationsHandler(RecruitmentDbContext db)
             .Where(a => a.JobPostId == query.JobPostId)
             .MatchingSearch(query.Search);
 
-        if (query.Status is not null)
-            applications = applications.Where(a => a.Status == query.Status);
+        if (query.Statuses.Count > 0)
+            applications = applications.Where(a => query.Statuses.Contains(a.Status));
 
         int total = await applications.CountAsync(ct);
 
@@ -87,7 +91,8 @@ internal sealed class ListApplicationsHandler(RecruitmentDbContext db)
             .SortedBy(query.Sort)
             .Skip(query.Offset)
             .Take(query.Limit)
-            .Select(a => new ApplicationListItem(a.Id, a.FirstName, a.LastName, a.Email, a.Status, a.CreatedAt))
+            .Select(a => new ApplicationListItem(
+                a.Id, a.FirstName, a.LastName, a.Email, a.PhoneNumber, a.Status, a.IsManual, a.CreatedAt))
             .ToListAsync(ct);
 
         return new ListApplicationsResponse(items, total, query.Offset, query.Limit, query.Sort);
