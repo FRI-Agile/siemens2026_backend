@@ -48,6 +48,15 @@ public sealed record JobPostAccess(Guid StaffId, bool All, bool Assigned, bool M
     };
 
     /// <summary>
+    /// Whether this access sees the applications in <c>nová žiadosť</c> of a post whose recruiter is
+    /// <paramref name="recruiterId"/>: an administrator on every post, a recruiter on the posts assigned to them. A
+    /// hiring manager sees a candidate only once the recruiter has moved it on to <c>predvýber</c>
+    /// (roles-permissions.md §3), so on a post they only manage these stay hidden, in the list, the counts and the detail.
+    /// </summary>
+    /// <param name="recruiterId">The post's <see cref="JobPost.RecruiterId"/>.</param>
+    public bool SeesNewApplicationsOf(Guid recruiterId) => All || (Assigned && recruiterId == StaffId);
+
+    /// <summary>
     /// The posts in <paramref name="posts"/> whose candidates this access may create and change: an administrator every
     /// post, a recruiter the posts assigned to them; none for a hiring manager, who only reads candidates.
     /// </summary>

@@ -11,8 +11,9 @@ using RecruitmentModule.Infrastructure.Authorization;
 namespace RecruitmentModule.Features.ApplicationFeatures.ListApplications;
 
 /// <summary>
-/// One page of a job post's applications, for staff who may work with the post. The attributes are the
-/// rules: the request schema copies them, and the query validation decorator enforces them.
+/// One page of a job post's applications, for staff who may work with the post; without those in <c>nová žiadosť</c>
+/// for a caller who reaches the post only as its hiring manager (<see cref="JobPostAccess.SeesNewApplicationsOf"/>).
+/// The attributes are the rules: the request schema copies them, and the query validation decorator enforces them.
 /// </summary>
 public sealed record ListApplicationsQuery
 {
@@ -75,12 +76,19 @@ internal sealed class ListApplicationsHandler(RecruitmentDbContext db)
     public async Task<ListApplicationsResponse> HandleAsync(ListApplicationsQuery query, CancellationToken ct = default)
     {
         // A post outside the caller's reach answers like one that does not exist, so its existence is not disclosed.
-        if (!await query.Access.Filter(db.JobPosts).AnyAsync(p => p.Id == query.JobPostId, ct))
-            throw new NotFoundException("Pracovná ponuka neexistuje.");
+        Guid recruiterId = await query.Access.Filter(db.JobPosts)
+            .Where(p => p.Id == query.JobPostId)
+            .Select(p => (Guid?)p.RecruiterId)
+            .SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Pracovná ponuka neexistuje.");
 
         IQueryable<Application> applications = db.Applications.AsNoTracking()
             .Where(a => a.JobPostId == query.JobPostId)
             .MatchingSearch(query.Search);
+
+        // A hiring manager does not see what the recruiter has not screened yet, not even in the total.
+        if (!query.Access.SeesNewApplicationsOf(recruiterId))
+            applications = applications.Where(a => a.Status != ApplicationStatuses.New);
 
         if (query.Statuses.Count > 0)
             applications = applications.Where(a => query.Statuses.Contains(a.Status));

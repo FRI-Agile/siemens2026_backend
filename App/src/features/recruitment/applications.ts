@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { request } from '../../shared/api/http.ts'
 import { getAccessToken } from '../../shared/auth/staffAuth.ts'
 import { useStaffAuth } from '../../shared/auth/StaffAuthContext.ts'
+import type { CurrentStaff } from '../../shared/auth/useCurrentStaff.ts'
 
 /** Where an application is in the pipeline; mirrors `ApplicationStatuses` in RecruitmentVocabulary.cs (Slovak codes). */
 export const applicationStatuses = [
@@ -14,6 +15,33 @@ export const applicationStatuses = [
 ] as const
 
 export type ApplicationStatus = (typeof applicationStatuses)[number]
+
+/**
+ * Whether `staff` sees a post's candidates in `nová žiadosť`: an admin on every post, a recruiter on the posts
+ * assigned to them. A hiring manager sees a candidate only once the recruiter has moved it to `predvýber`
+ * (roles-permissions.md §3). The API enforces the same rule (`JobPostAccess.SeesNewApplicationsOf`); here it only
+ * decides which states the filter offers.
+ */
+export function seesNewApplications(
+  staff: CurrentStaff | undefined,
+  post: { recruiterId: string },
+): boolean {
+  if (!staff) return false
+  return (
+    staff.roles.includes('Admin') ||
+    (staff.roles.includes('Recruiter') && post.recruiterId === staff.id)
+  )
+}
+
+/** The states `staff` can see on `post`, in pipeline order. */
+export function visibleApplicationStatuses(
+  staff: CurrentStaff | undefined,
+  post: { recruiterId: string },
+): readonly ApplicationStatus[] {
+  return seesNewApplications(staff, post)
+    ? applicationStatuses
+    : applicationStatuses.filter((status) => status !== 'nová žiadosť')
+}
 
 export const applicationStatusLabels: Record<ApplicationStatus, string> = {
   'nová žiadosť': 'Nová žiadosť',
@@ -33,6 +61,8 @@ export interface ApplicationListItem {
   /** E.164 (`+421…`); `null` when the applicant gave none. */
   phoneNumber: string | null
   status: ApplicationStatus
+  /** Added by a recruiter or an admin by hand rather than submitted through the public form. */
+  isManual: boolean
   createdAt: string
 }
 

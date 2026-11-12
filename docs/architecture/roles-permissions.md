@@ -117,7 +117,6 @@ Where the code (Recruitment module) differs from the model above:
 
 | Area | Model | Code today |
 | ---- | ----- | ---------- |
-| Candidate list (`ListApplications`) | Hiring manager does not see `nová žiadosť` | Reach is enforced (`JobPostAccess`), but the hiring manager sees `nová žiadosť` too |
 | Candidate status change | [§4](#4-candidate-status) | Not implemented |
 | Candidate update | Recruiter, Admin | Not implemented |
 | Attaching documents to a manually created candidate | Recruiter, Admin | Not implemented: `POST /applications` creates the candidate without documents |

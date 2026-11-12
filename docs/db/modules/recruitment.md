@@ -253,6 +253,16 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
   Who may list them is the post's: an administrator any post, a recruiter the posts assigned to them (`recruiter_id`),
   a hiring manager the posts they are the hiring manager of (`hiring_manager_id`, whoever created them), as
   `JobPostAccess` decides; any other post answers `404`.
+- **The hiring manager never sees `nová žiadosť`.** A candidate the recruiter has not screened yet is left out of the
+  list, its total and the detail for a caller who reaches the post only as its hiring manager
+  (`JobPostAccess.SeesNewApplicationsOf`): an administrator sees them on every post, a recruiter on the posts assigned
+  to them, so someone holding both roles sees them only where they are the post's recruiter. Filtering for
+  `nová žiadosť` then finds nothing, and the detail answers `404`, as for a candidate outside the caller's reach.
+- **The candidate detail** (`GetApplication`, `GET /applications/{id}`) shows the name, e-mail, phone, the post (id,
+  title, status), the status, whether it was added by hand and by whom, `version`, and the documents: the CV first,
+  then the cover letter, then the others oldest first, each as its `type` and `file_id`. The client reads a file's
+  name, type and size from `GET /files/{file_id}/url`, which answers `404` until the malware scan has cleared it. Same
+  reach as the list; any other candidate answers `404`.
 - **One name column to search.** `display_name` is generated, so it cannot drift from the parts and the application
   never writes it (EF maps it `ValueGeneratedOnAddOrUpdate`). A search for "Martin Kaš" matches it, which two separate
   columns joined with `OR` would not.

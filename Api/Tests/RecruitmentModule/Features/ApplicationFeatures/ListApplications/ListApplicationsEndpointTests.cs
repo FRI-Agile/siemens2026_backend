@@ -21,8 +21,8 @@ namespace Tests.RecruitmentModule.Features.ApplicationFeatures.ListApplications;
 
 /// <summary>
 /// <c>POST /job-posts/{id}/applications/search</c> as the token decides: an administrator reads any post's applicants, a
-/// recruiter those of a post assigned to them, a hiring manager those of a post they created; anyone else gets <c>404</c>,
-/// and a caller without a token <c>401</c>.
+/// recruiter those of a post assigned to them, a hiring manager those of a post they are the hiring manager of, without
+/// the ones still in <c>nová žiadosť</c>; anyone else gets <c>404</c>, and a caller without a token <c>401</c>.
 /// </summary>
 public class ListApplicationsEndpointTests
 {
@@ -65,20 +65,21 @@ public class ListApplicationsEndpointTests
     private static HttpClient As(WebApplication app, string role) =>
         StaffTokens.Client(app, StaffTokens.Token(StaffTokens.Claims(role)));
 
-    public static TheoryData<string, Guid, Guid, HttpStatusCode> Callers => new()
+    public static TheoryData<string, Guid, Guid, HttpStatusCode, int> Callers => new()
     {
-        // role, the post's recruiter, the post's hiring manager, the answer
-        { StaffRoles.Admin, Guid.NewGuid(), Guid.NewGuid(), HttpStatusCode.OK },
-        { StaffRoles.Recruiter, Me, Guid.NewGuid(), HttpStatusCode.OK },
-        { StaffRoles.Recruiter, Guid.NewGuid(), Me, HttpStatusCode.NotFound },
-        { StaffRoles.HiringManager, Guid.NewGuid(), Me, HttpStatusCode.OK },
-        { StaffRoles.HiringManager, Me, Guid.NewGuid(), HttpStatusCode.NotFound },
+        // role, the post's recruiter, the post's hiring manager, the answer, how many of its one applicant (in nová
+        // žiadosť) the caller sees: the hiring manager sees no candidate the recruiter has not screened yet
+        { StaffRoles.Admin, Guid.NewGuid(), Guid.NewGuid(), HttpStatusCode.OK, 1 },
+        { StaffRoles.Recruiter, Me, Guid.NewGuid(), HttpStatusCode.OK, 1 },
+        { StaffRoles.Recruiter, Guid.NewGuid(), Me, HttpStatusCode.NotFound, 0 },
+        { StaffRoles.HiringManager, Guid.NewGuid(), Me, HttpStatusCode.OK, 0 },
+        { StaffRoles.HiringManager, Me, Guid.NewGuid(), HttpStatusCode.NotFound, 0 },
     };
 
     [Theory]
     [MemberData(nameof(Callers))]
     public async Task The_token_decides_whose_applicants_the_caller_reads(
-        string role, Guid recruiterId, Guid hiringManagerId, HttpStatusCode expected)
+        string role, Guid recruiterId, Guid hiringManagerId, HttpStatusCode expected, int seen)
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         JobPost post = JobPostSeed.Post("Product Owner");
@@ -94,7 +95,9 @@ public class ListApplicationsEndpointTests
         if (expected == HttpStatusCode.OK)
         {
             JsonElement page = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement;
-            Assert.Equal(1, page.GetProperty("total").GetInt32());
+            Assert.Equal(seen, page.GetProperty("total").GetInt32());
+            if (seen == 0)
+                return;
             Assert.Equal("newest", page.GetProperty("sort").GetString());
             JsonElement item = page.GetProperty("items")[0];
             Assert.Equal(("Martin", "Kašuba", "kasuba7@stud.uniza.sk", "nová žiadosť"), (

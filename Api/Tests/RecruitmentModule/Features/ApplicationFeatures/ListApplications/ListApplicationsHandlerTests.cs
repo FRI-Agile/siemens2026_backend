@@ -159,10 +159,50 @@ public class ListApplicationsHandlerTests
         JobPostAccess anotherManager = new(Guid.NewGuid(), All: false, Assigned: false, Managed: true);
         JobPostAccess itsRecruiter = new(post.RecruiterId, All: false, Assigned: false, Managed: true);
 
-        Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(post, hiringManager), ct)).Total);
+        // Every applicant but the one still in nová žiadosť, which the recruiter has not screened yet.
+        Assert.Equal(3, (await new ListApplicationsHandler(db).HandleAsync(Query(post, hiringManager), ct)).Total);
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsCreator), ct));
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, anotherManager), ct));
         await Assert.ThrowsAsync<NotFoundException>(() => new ListApplicationsHandler(db).HandleAsync(Query(post, itsRecruiter), ct));
+    }
+
+    [Fact]
+    public async Task A_hiring_manager_never_sees_nova_ziadost_not_even_when_filtering_for_it()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, ct, Pipeline);
+        JobPostAccess hiringManager = JobPostSeed.ManagerOf(post);
+
+        ListApplicationsResponse page = await new ListApplicationsHandler(db).HandleAsync(Query(post, hiringManager), ct);
+        ListApplicationsResponse onlyNew = await new ListApplicationsHandler(db)
+            .HandleAsync(Query(post, hiringManager) with { Statuses = [ApplicationStatuses.New] }, ct);
+        ListApplicationsResponse searched = await new ListApplicationsHandler(db)
+            .HandleAsync(Query(post, hiringManager) with { Search = "kasuba" }, ct);
+
+        Assert.DoesNotContain(page.Items, i => i.Status == ApplicationStatuses.New);
+        Assert.Equal((0, 0), (onlyNew.Total, onlyNew.Items.Count));
+        Assert.Equal(0, searched.Total);
+    }
+
+    [Fact]
+    public async Task Someone_both_recruiter_and_hiring_manager_sees_nova_ziadost_only_on_the_posts_assigned_to_them()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost managed = await SeedAsync(db, ct, Pipeline);
+        JobPost assigned = await SeedAsync(db, ct, Pipeline);
+        JobPost both = await SeedAsync(db, ct, Pipeline);
+        Guid me = Guid.NewGuid();
+        await db.JobPosts.Where(p => p.Id == managed.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.HiringManagerId, me), ct);
+        await db.JobPosts.Where(p => p.Id == assigned.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.RecruiterId, me), ct);
+        await db.JobPosts.Where(p => p.Id == both.Id).ExecuteUpdateAsync(u => u
+            .SetProperty(p => p.RecruiterId, me).SetProperty(p => p.HiringManagerId, me), ct);
+        JobPostAccess access = new(me, All: false, Assigned: true, Managed: true);
+
+        Assert.Equal(3, (await new ListApplicationsHandler(db).HandleAsync(Query(managed, access), ct)).Total);
+        Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(assigned, access), ct)).Total);
+        Assert.Equal(4, (await new ListApplicationsHandler(db).HandleAsync(Query(both, access), ct)).Total);
     }
 
     [Fact]

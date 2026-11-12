@@ -13,9 +13,9 @@ import {
 import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
-  applicationStatuses,
   applicationStatusLabels,
   useJobPostApplications,
+  visibleApplicationStatuses,
   type ApplicationListItem,
 } from '../../../features/recruitment/applications.ts'
 import {
@@ -34,6 +34,7 @@ import {
 import {
   canManageJobPost,
   useManagedJobPost,
+  type ManagedJobPost,
 } from '../../../features/recruitment/managedJobPosts.ts'
 import {
   ApplicationStatusBadge,
@@ -255,7 +256,7 @@ export function StaffJobPostDetailPage() {
           </Fact>
           <Fact label="Počet otvorených miest">{post.openPositions}</Fact>
         </dl>
-        <Applicants jobPostId={post.id} />
+        <Applicants post={post} />
       </section>
     </div>
   )
@@ -263,11 +264,6 @@ export function StaffJobPostDetailPage() {
 
 /** Applicants per page. */
 const PAGE_SIZE = 20
-
-const statusOptions = applicationStatuses.map((status) => ({
-  value: status,
-  label: applicationStatusLabels[status],
-}))
 
 /** `+421905123456` as people read it, `+421 905 123 456`; another country's number as stored. */
 function formatPhone(phone: string | null) {
@@ -278,17 +274,25 @@ function formatPhone(phone: string | null) {
 
 /**
  * The post's applicants: searched by name (forgiving accents and a typo) or e-mail, filtered by state, newest or
- * oldest first, a page at a time. The search, filter and page are in the URL, like the job post list's.
+ * oldest first, a page at a time. The search, filter and page are in the URL, like the job post list's. A hiring
+ * manager never sees `nová žiadosť` on a post they only manage, so the filter does not offer it either.
  */
-function Applicants({ jobPostId }: { jobPostId: string }) {
+function Applicants({ post }: { post: ManagedJobPost }) {
   const styles = useStyles()
   const { data: me } = useCurrentStaff()
+  const jobPostId = post.id
+  const allowedStatuses = visibleApplicationStatuses(me, post)
+  const statusOptions = allowedStatuses.map((status) => ({
+    value: status,
+    label: applicationStatusLabels[status],
+  }))
   // Recruiters and admins add applicants by hand (roles-permissions.md §3); the API enforces it, here it shapes the UI.
   const canCreateApplicant =
     me?.roles.some((role) => ['Recruiter', 'Admin'].includes(role)) ?? false
   // The applicant list has no best-match sort, only newest or oldest first.
   const list = useJobPostListParams({ relevance: false })
-  const statuses = listParam(list.params, 'stav', applicationStatuses)
+  // A status the caller cannot see (e.g. a shared link with `nová žiadosť`) is dropped rather than sent.
+  const statuses = listParam(list.params, 'stav', allowedStatuses)
   const { data, error, isPending, isPlaceholderData } = useJobPostApplications(
     jobPostId,
     {
@@ -354,9 +358,7 @@ function Applicants({ jobPostId }: { jobPostId: string }) {
           label="Stav"
           values={statuses}
           options={statusOptions}
-          onToggle={(status) =>
-            list.toggle('stav', applicationStatuses, status)
-          }
+          onToggle={(status) => list.toggle('stav', allowedStatuses, status)}
         />
         <FilterChoice
           label="Zoradiť"
