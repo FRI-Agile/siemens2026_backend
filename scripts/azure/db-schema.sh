@@ -3,7 +3,7 @@
 # the local AppHost loads (ADR-D002, ADR-D005). Run once per new database, after db-grant-identity.sh: that script
 # creates the schemas, which the application role may not do itself.
 #
-# Only 01-create-db.sql: the development seed (02-seed-data.sql) never reaches Azure.
+# Only 01-create-db.sql: the development seed (02-seed-data.sql) reaches Azure only through db-reset.sh --seed.
 #
 # A baseline, not a migration. The DDL is not re-runnable, so this refuses to touch a database that already has tables
 # in the application's schemas: a deployed database, or one restored by migrate.sh import. Later schema changes need

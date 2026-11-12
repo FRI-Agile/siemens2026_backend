@@ -233,7 +233,7 @@ It opens an SSH tunnel to PostgreSQL through the VM, signs in with your Entra to
 just azure-db-schema
 ```
 
-It creates the tables, functions and triggers from `configs/postgres/init/01-create-db.sql`, the same script the local AppHost loads ([ADR-D005](../db/decision-log.md#adr-d005--the-ddl-script-is-applied-to-azure-once-as-the-baseline)), owned by `healthyhires_app` and in one transaction. The development seed (`02-seed-data.sql`) is never loaded. It runs **once per new database**: it refuses a database that already has tables, so it is safe to run by mistake, but it cannot apply a later schema change (§10.1).
+It creates the tables, functions and triggers from `configs/postgres/init/01-create-db.sql`, the same script the local AppHost loads ([ADR-D005](../db/decision-log.md#adr-d005--the-ddl-script-is-applied-to-azure-once-as-the-baseline)), owned by `healthyhires_app` and in one transaction. The development seed (`02-seed-data.sql`) is not loaded; `just azure-db-reset --seed` loads it on purpose (§10.1). It runs **once per new database**: it refuses a database that already has tables, so it is safe to run by mistake, but it cannot apply a later schema change (§10.1).
 
 ```bash
 just azure-graph-grant
@@ -303,7 +303,7 @@ In the portal, *Application Insights → Logs*: `AppRequests | take 10` shows AP
 | `infra/cloud-init.yaml` or `deploy/host/` | Needs a rebuilt VM (§10.2): Azure does not let custom data change |
 | A new backend module with its own schema | Add the schema to `infra/db-schemas.txt`, run `just azure-db-grant`, then push. The API cannot create schemas itself |
 | A new PostgreSQL extension | Add it to `azure.extensions` in `infra/modules/postgres.bicep` and `just azure-deploy`, add its `CREATE EXTENSION … WITH SCHEMA public` to the DDL, then `just azure-db-grant`. The API cannot create extensions itself ([ADR-D006](../db/decision-log.md#adr-d006--extensions-live-in-public-and-are-created-by-the-operator)) |
-| A schema change (table, column, index) after the first deploy | Not automated yet: `just azure-db-schema` only creates an empty database's baseline. Apply the change by hand through the same tunnel until migrations exist ([ADR-D005](../db/decision-log.md#adr-d005--the-ddl-script-is-applied-to-azure-once-as-the-baseline)) |
+| A schema change (table, column, index) after the first deploy | While the database holds no real data: `just azure-resume`, `just azure-db-reset --seed` (or without `--seed` for empty tables), then `gh workflow run deploy`. It drops the schemas and recreates them from the current DDL, so every row is lost; it shows the row counts and asks for the server name first. Once real data exists, apply the change by hand through the same tunnel until migrations exist ([ADR-D005](../db/decision-log.md#adr-d005--the-ddl-script-is-applied-to-azure-once-as-the-baseline)) |
 | Accept a Trivy or ZAP finding | Only with a reason: `.trivyignore` or `.zap/rules.tsv`. Prefer fixing it |
 
 ### 10.2 Rebuilding the VM

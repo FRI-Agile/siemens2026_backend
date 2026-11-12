@@ -92,6 +92,10 @@ and the deploy workflow touches no schema.
   script is the baseline ADR-D002 anticipated, and a schema change needs a migration. How migrations are written and
   applied is still open; numbered SQL files applied through the same tunnel fit the SQL-first approach best. Until
   then a change is applied by hand, and the DDL script is updated in the same pull request.
+- Until the demo deployment holds real data, `scripts/azure/db-reset.sh` (`just azure-db-reset`) is the shortcut: it
+  drops the schemas in `infra/db-schemas.txt` and recreates them from the current DDL in one transaction, and with
+  `--seed` loads `02-seed-data.sql`, the only way the development seed reaches Azure. It deletes every row, so it asks
+  for the server name first; it stops being an option once the database holds anything worth keeping.
 
 ---
 

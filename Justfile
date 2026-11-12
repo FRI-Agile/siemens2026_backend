@@ -102,6 +102,11 @@ azure-db-grant:
 azure-db-schema:
   scripts/azure/db-schema.sh
 
+# DESTRUCTIVE, asks first. Needs `just azure-resume`; redeploy the API afterwards.
+# Drops the Azure tables and recreates them from the current 01-create-db.sql; --seed also loads 02-seed-data.sql.
+azure-db-reset *flags:
+  scripts/azure/db-reset.sh {{flags}}
+
 # Gives the VM's managed identity the Graph permissions for creating staff accounts; again after every VM rebuild.
 azure-graph-grant:
   scripts/azure/graph-grant-identity.sh
