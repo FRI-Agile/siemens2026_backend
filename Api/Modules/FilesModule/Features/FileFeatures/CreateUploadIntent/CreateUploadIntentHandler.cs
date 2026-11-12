@@ -52,7 +52,8 @@ internal sealed class CreateUploadIntentHandler(
         IFilePurpose purpose = purposes.Find(command.Purpose)
             ?? throw ValidationException.ForField(nameof(command.Purpose), "Neznámy druh súboru.");
 
-        // The purpose's rules, not a global list. These check only what the client declares; confirm checks the bytes.
+        // The purpose's rules, not a global list. These check only what the client declares; confirm checks the stored
+        // size, type and leading bytes (FileInspection).
         ValidationErrors errors = new();
         if (!purpose.AllowedContentTypes.Contains(command.ContentType))
             errors.Add(nameof(command.ContentType), "Tento typ súboru nie je povolený.");

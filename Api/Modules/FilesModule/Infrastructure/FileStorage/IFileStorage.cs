@@ -39,6 +39,15 @@ internal interface IFileStorage
     /// <param name="ct">Token to cancel the call.</param>
     Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default);
 
+    /// <summary>
+    /// The object's first <paramref name="length"/> bytes, or all of them when it is shorter; <c>null</c> when nothing is
+    /// stored under the key. Only that range is transferred.
+    /// </summary>
+    /// <param name="objectKey">The object's key.</param>
+    /// <param name="length">How many leading bytes to read.</param>
+    /// <param name="ct">Token to cancel the call.</param>
+    Task<byte[]?> ReadHeadAsync(string objectKey, int length, CancellationToken ct = default);
+
     /// <summary>Removes the object. Removing an absent object succeeds.</summary>
     /// <param name="objectKey">The object's key.</param>
     /// <param name="ct">Token to cancel the call.</param>

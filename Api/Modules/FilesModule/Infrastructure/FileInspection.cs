@@ -12,9 +12,13 @@ namespace FilesModule.Infrastructure;
 /// </summary>
 internal static class FileInspection
 {
+    private const string NotUploaded =
+        "Súbor sa ešte nenahral. Počkajte na dokončenie nahrávania alebo ho nahrajte znova.";
+
     /// <summary>
-    /// Reads the object's properties and holds them to the purpose. Everything checked at intent was the client's word
-    /// about bytes that did not exist yet; a presigned URL bounds neither the size nor, on Azure, the content type.
+    /// Reads the object's properties and leading bytes and holds them to the purpose. Everything checked at intent was
+    /// the client's word about bytes that did not exist yet; a presigned URL bounds neither the size nor, on Azure, the
+    /// content type, and no header proves what the bytes are.
     /// </summary>
     /// <param name="file">The pending file.</param>
     /// <param name="purpose">Its purpose; <c>null</c> when no module registers it, which fails closed.</param>
@@ -28,8 +32,7 @@ internal static class FileInspection
 
         StoredObject? stored = await storage.StatAsync(file.ObjectKey, ct);
         if (stored is null)
-            return Inspection.Refused("missing",
-                "Súbor sa ešte nenahral. Počkajte na dokončenie nahrávania alebo ho nahrajte znova.");
+            return Inspection.Refused("missing", NotUploaded);
 
         if (stored.SizeBytes > purpose.MaxSizeBytes)
             return Inspection.Refused("too_large",
@@ -42,6 +45,15 @@ internal static class FileInspection
             || !purpose.AllowedContentTypes.Contains(file.ContentType))
             return Inspection.Refused("content_type",
                 "Typ nahraného súboru nezodpovedá ohlásenému typu. Nahrajte ho znova.");
+
+        // The stored type is still only the header the client sent with its PUT; the bytes are what tell. The upload URL
+        // cannot overwrite the blob, so the bytes read here are the bytes stat saw.
+        byte[]? head = await storage.ReadHeadAsync(file.ObjectKey, FileTypes.HeadLength, ct);
+        if (head is null)
+            return Inspection.Refused("missing", NotUploaded);
+        if (!FileTypes.HeadMatches(file.ContentType, head))
+            return Inspection.Refused("signature",
+                "Obsah súboru nezodpovedá jeho typu. Súbor môže byť poškodený alebo premenovaný. Nahrajte ho znova.");
 
         return new Inspection(stored, null, null);
     }

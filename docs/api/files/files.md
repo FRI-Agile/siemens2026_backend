@@ -187,7 +187,8 @@ Then `GET <url>` for the bytes. Other answers:
 
 The URL lasts **5 minutes**, so request it when the user opens the file and do not cache it. Storage answers with
 `Content-Disposition: attachment` and the uploaded file name (diacritics kept in `filename*`), so the browser saves the
-file instead of rendering it on the storage origin.
+file instead of rendering it on the storage origin. The saved name always ends in an extension of the checked type: a
+PDF uploaded as `cv.exe` is saved as `cv.exe.pdf`. `fileName` in the response stays the uploaded name, for display.
 
 ## 7. Frontend: a reference may have no file
 
@@ -231,12 +232,16 @@ declarations about bytes that do not exist yet, so confirm checks what actually 
 | Rule | Enforced at intent | Enforced when referenced (validation and confirm) |
 | ---- | ------------------ | ------------------------------------------------- |
 | Content type | declared type must be accepted | the stored blob's type must equal the declared one. A SAS URL cannot bind the type, so the client can send another, and confirm catches it. |
+| Content | — | the blob's first 1024 bytes must be what a file of the declared type begins with (`FileTypes`): `%PDF-` for PDF, the OLE header for `.doc`, a ZIP header for `.docx`, `FF D8 FF` for JPEG, the PNG signature for PNG. A bitmap or an executable renamed and declared as a PDF is refused. |
 | Size | declared size ≤ maximum | the real size ≤ maximum and > 0. A SAS URL cannot bind the size. |
 | Overwrite | — | the upload SAS has only the *create* permission, so the bytes confirm checked cannot be replaced afterwards. |
 
 A file that breaks a rule is **never confirmed**. It stays pending and is reaped like an abandoned upload, so oversize
-bytes are not kept for the retention window. The bytes themselves are not sniffed: a file whose declared type matches
-is still not proven to be that format. ClamAV is the check on the content.
+bytes are not kept for the retention window. Only the leading bytes are checked: a `.docx` is a ZIP whose parts are not
+opened, and a file that starts right can still be broken further in. ClamAV is the check on the rest of the content.
+
+A content type a purpose accepts must also be known to `FileTypes`, or no file of it is ever confirmed;
+`FileTypesTests` fails when `application_document` accepts a type `FileTypes` does not know.
 
 ## 9. Confirm and release
 

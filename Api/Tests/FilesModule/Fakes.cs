@@ -23,9 +23,15 @@ internal sealed class FakeFileStorage : IFileStorage
             new Uri($"https://storage.test/files/{objectKey}?sig=put"),
             new Dictionary<string, string> { ["Content-Type"] = contentType }));
 
+    /// <summary>The names download URLs were signed with, in order.</summary>
+    public List<string> DownloadNames { get; } = [];
+
     public Task<Uri> CreateDownloadUrlAsync(
-        string objectKey, string fileName, string contentType, TimeSpan lifetime, CancellationToken ct = default) =>
-        Task.FromResult(new Uri($"https://storage.test/files/{objectKey}?sig=get"));
+        string objectKey, string fileName, string contentType, TimeSpan lifetime, CancellationToken ct = default)
+    {
+        DownloadNames.Add(fileName);
+        return Task.FromResult(new Uri($"https://storage.test/files/{objectKey}?sig=get"));
+    }
 
     public Task<StoredObject?> StatAsync(string objectKey, CancellationToken ct = default) =>
         Task.FromResult(Objects.TryGetValue(objectKey, out var stored)
@@ -35,12 +41,30 @@ internal sealed class FakeFileStorage : IFileStorage
     public Task<Stream?> OpenReadAsync(string objectKey, CancellationToken ct = default) =>
         Task.FromResult<Stream?>(Objects.TryGetValue(objectKey, out var stored) ? new MemoryStream(stored.Content) : null);
 
+    public Task<byte[]?> ReadHeadAsync(string objectKey, int length, CancellationToken ct = default) =>
+        Task.FromResult(Objects.TryGetValue(objectKey, out var stored) ? stored.Content.Take(length).ToArray() : null);
+
     public Task DeleteAsync(string objectKey, CancellationToken ct = default)
     {
         if (FailingDeletes.Contains(objectKey))
             throw new IOException("Storage is down.");
         Objects.Remove(objectKey);
         return Task.CompletedTask;
+    }
+}
+
+/// <summary>Bytes that pass the confirm's check of their type, padded to a size.</summary>
+internal static class FileContent
+{
+    public static byte[] Pdf(int size) => Padded("%PDF-1.7\n"u8, size);
+
+    public static byte[] Png(int size) => Padded([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], size);
+
+    private static byte[] Padded(ReadOnlySpan<byte> head, int size)
+    {
+        byte[] content = new byte[Math.Max(size, head.Length)];
+        head.CopyTo(content);
+        return content;
     }
 }
 

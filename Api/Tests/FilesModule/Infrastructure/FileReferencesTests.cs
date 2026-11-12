@@ -38,7 +38,7 @@ public class FileReferencesTests
         FakeFileStorage storage = new();
         StoredFile file = FileSeed.File(Now.AddMinutes(-2));
         await FileSeed.AddAsync(db, ct, file);
-        storage.Put(file.ObjectKey, new byte[640], "application/pdf");
+        storage.Put(file.ObjectKey, FileContent.Pdf(640), "application/pdf");
 
         ReferencedFile validated = await References(db, storage).ValidateAsync(file.Id, Field, Documents, ct);
 
@@ -96,7 +96,7 @@ public class FileReferencesTests
         FakeFileStorage storage = new();
         StoredFile file = FileSeed.File(Now - FileConstants.UploadUrlLifetime - FileConstants.PendingGrace - TimeSpan.FromSeconds(1));
         await FileSeed.AddAsync(db, ct, file);
-        storage.Put(file.ObjectKey, new byte[10], "application/pdf");
+        storage.Put(file.ObjectKey, FileContent.Pdf(10), "application/pdf");
 
         Assert.Equal("Platnosť nahrávania súboru vypršala. Nahrajte ho znova.",
             await RefusedAsync(() => References(db, storage).ValidateAsync(file.Id, Field, Documents, ct)));
@@ -124,5 +124,21 @@ public class FileReferencesTests
             storage.Put(file.ObjectKey, new byte[bytes], storedType);
 
         Assert.Equal(expected, await RefusedAsync(() => References(db, storage).ValidateAsync(file.Id, Field, Documents, ct)));
+    }
+
+    [Fact]
+    public async Task A_bitmap_declared_and_stored_as_a_pdf_is_refused_by_its_bytes()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using FilesDbContext db = TestDb.NewFilesContext();
+        FakeFileStorage storage = new();
+        StoredFile file = FileSeed.File(Now.AddMinutes(-2));
+        await FileSeed.AddAsync(db, ct, file);
+        byte[] bitmap = new byte[54];
+        "BM"u8.CopyTo(bitmap);
+        storage.Put(file.ObjectKey, bitmap, "application/pdf");
+
+        Assert.Equal("Obsah súboru nezodpovedá jeho typu. Súbor môže byť poškodený alebo premenovaný. Nahrajte ho znova.",
+            await RefusedAsync(() => References(db, storage).ValidateAsync(file.Id, Field, Documents, ct)));
     }
 }

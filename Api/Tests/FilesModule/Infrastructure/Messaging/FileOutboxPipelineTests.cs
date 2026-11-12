@@ -60,7 +60,7 @@ public class FileOutboxPipelineTests
         await using FilesDbContext files = TestDb.NewFilesContextOn(h.ConnectionString);
         StoredFile file = FileSeed.File(Now.AddMinutes(-1));
         await FileSeed.AddAsync(files, ct, file);
-        h.Storage.Put(file.ObjectKey, new byte[300], "application/pdf");
+        h.Storage.Put(file.ObjectKey, FileContent.Pdf(300), "application/pdf");
         return file;
     }
 

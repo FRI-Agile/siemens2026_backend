@@ -56,7 +56,7 @@ public class FileReferenceHandlerTests
         FakeFileStorage storage = new();
         StoredFile file = FileSeed.File(Now.AddMinutes(-2));
         await FileSeed.AddAsync(db, ct, file);
-        storage.Put(file.ObjectKey, new byte[640], "application/pdf");
+        storage.Put(file.ObjectKey, FileContent.Pdf(640), "application/pdf");
         EntityChange insert = Change(ChangeAction.Insert, null, file.Id);
 
         await Handler(db, storage).HandleAsync([insert], ct);
@@ -77,8 +77,8 @@ public class FileReferenceHandlerTests
         StoredFile photo = FileSeed.File(Now.AddMinutes(-2), purpose: TestPhotoPurpose.PurposeKey, contentType: "image/png");
         StoredFile missing = FileSeed.File(Now.AddMinutes(-2));
         await FileSeed.AddAsync(db, ct, oversize, photo, missing);
-        storage.Put(oversize.ObjectKey, new byte[4096], "application/pdf");
-        storage.Put(photo.ObjectKey, new byte[10], "image/png");
+        storage.Put(oversize.ObjectKey, FileContent.Pdf(4096), "application/pdf");
+        storage.Put(photo.ObjectKey, FileContent.Png(10), "image/png");
 
         await Handler(db, storage).HandleAsync(
             [Change(ChangeAction.Insert, null, oversize.Id), Change(ChangeAction.Insert, null, photo.Id),
@@ -97,7 +97,7 @@ public class FileReferenceHandlerTests
         StoredFile old = FileSeed.File(Now.AddDays(-1), etag: "old", scannedAt: Now.AddDays(-1));
         StoredFile replacement = FileSeed.File(Now.AddMinutes(-2));
         await FileSeed.AddAsync(db, ct, old, replacement);
-        storage.Put(replacement.ObjectKey, new byte[10], "application/pdf");
+        storage.Put(replacement.ObjectKey, FileContent.Pdf(10), "application/pdf");
 
         await Handler(db, storage).HandleAsync(
             [Change(ChangeAction.Update, old.Id, replacement.Id, Actor.ForUser(Staff))], ct);

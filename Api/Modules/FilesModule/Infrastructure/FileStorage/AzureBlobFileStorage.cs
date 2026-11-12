@@ -81,6 +81,25 @@ internal sealed class AzureBlobFileStorage(BlobServiceClient service, string con
         }
     }
 
+    public async Task<byte[]?> ReadHeadAsync(string objectKey, int length, CancellationToken ct = default)
+    {
+        try
+        {
+            BlobDownloadResult head = (await _container.GetBlobClient(objectKey).DownloadContentAsync(
+                new BlobDownloadOptions { Range = new HttpRange(0, length) }, ct)).Value;
+            return head.Content.ToArray();
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 416)
+        {
+            // A range on an empty blob is not satisfiable; it has no leading bytes.
+            return [];
+        }
+    }
+
     public Task DeleteAsync(string objectKey, CancellationToken ct = default) =>
         _container.GetBlobClient(objectKey).DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots, cancellationToken: ct);
 

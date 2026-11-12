@@ -12,7 +12,8 @@ public class GetFileDownloadUrlHandlerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 9, 10, 0, 0, TimeSpan.Zero);
 
-    private static GetFileDownloadUrlHandler Handler(FilesDbContext db) => new(db, new FakeFileStorage(), new FixedTime(Now));
+    private static GetFileDownloadUrlHandler Handler(FilesDbContext db, FakeFileStorage? storage = null) =>
+        new(db, storage ?? new FakeFileStorage(), new FixedTime(Now));
 
     [Fact]
     public async Task A_clean_file_gets_a_url_with_its_name_and_type()
@@ -27,6 +28,22 @@ public class GetFileDownloadUrlHandlerTests
         Assert.Contains(file.ObjectKey, response.Url.ToString(), StringComparison.Ordinal);
         Assert.Equal(("životopis.pdf", "application/pdf", 100L), (response.FileName, response.ContentType, response.SizeBytes));
         Assert.Equal(Now + FileConstants.DownloadUrlLifetime, response.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task The_download_is_saved_with_the_checked_types_extension_whatever_the_uploaded_name()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using FilesDbContext db = TestDb.NewFilesContext();
+        FakeFileStorage storage = new();
+        StoredFile file = FileSeed.File(Now.AddHours(-1), etag: "abc", scannedAt: Now.AddMinutes(-50));
+        file.FileName = "životopis.exe";
+        await FileSeed.AddAsync(db, ct, file);
+
+        GetFileDownloadUrlResponse response = await Handler(db, storage).HandleAsync(new GetFileDownloadUrlQuery(file.Id), ct);
+
+        Assert.Equal("životopis.exe.pdf", Assert.Single(storage.DownloadNames));
+        Assert.Equal("životopis.exe", response.FileName); // shown as uploaded
     }
 
     public static TheoryData<string> Unavailable => ["pending", "unscanned", "released", "unknown"];

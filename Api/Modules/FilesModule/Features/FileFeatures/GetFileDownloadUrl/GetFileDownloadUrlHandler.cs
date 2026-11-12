@@ -1,3 +1,4 @@
+using FilesModule.Domain;
 using FilesModule.Infrastructure.Scheduling;
 using FilesModule.Infrastructure;
 using FilesModule.Infrastructure.FileStorage;
@@ -33,8 +34,10 @@ internal sealed class GetFileDownloadUrlHandler(FilesDbContext db, IFileStorage 
             ?? throw new NotFoundException("Súbor nie je k dispozícii.");
 
         DateTimeOffset expiresAt = time.GetUtcNow() + FileConstants.DownloadUrlLifetime;
+        // Saved with an extension of the type confirm checked the bytes against, never one only the client chose.
         Uri url = await storage.CreateDownloadUrlAsync(
-            file.ObjectKey, file.FileName, file.ContentType, FileConstants.DownloadUrlLifetime, ct);
+            file.ObjectKey, FileTypes.DownloadName(file.FileName, file.ContentType), file.ContentType,
+            FileConstants.DownloadUrlLifetime, ct);
 
         return new GetFileDownloadUrlResponse(url, file.FileName, file.ContentType, file.SizeBytes, expiresAt);
     }

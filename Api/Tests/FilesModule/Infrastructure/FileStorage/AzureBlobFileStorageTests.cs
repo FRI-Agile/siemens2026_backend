@@ -58,6 +58,9 @@ public class AzureBlobFileStorageTests
             Assert.Equal(content, bytes.ToArray());
         }
 
+        Assert.Equal(content.AsSpan(0, 5).ToArray(), await storage.ReadHeadAsync(key, 5, ct));
+        Assert.Equal(content, await storage.ReadHeadAsync(key, 1024, ct)); // shorter than the range: all of it
+
         Uri download = await storage.CreateDownloadUrlAsync(key, "Životopis Jána.pdf", "application/pdf", TimeSpan.FromMinutes(5), ct);
         using (HttpResponseMessage get = await Http.GetAsync(download, ct))
         {
@@ -71,7 +74,24 @@ public class AzureBlobFileStorageTests
         await storage.DeleteAsync(key, ct);
         Assert.Null(await storage.StatAsync(key, ct));
         Assert.Null(await storage.OpenReadAsync(key, ct));
+        Assert.Null(await storage.ReadHeadAsync(key, 5, ct));
         await storage.DeleteAsync(key, ct); // deleting an absent object succeeds
+    }
+
+    [Fact]
+    public async Task The_head_of_an_empty_blob_is_empty()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        IFileStorage storage = await NewStorageAsync(ct);
+        string key = $"uploads/{Guid.NewGuid():N}.pdf";
+
+        PresignedUpload upload = await storage.CreateUploadUrlAsync(key, "application/pdf", TimeSpan.FromMinutes(10), ct);
+        using (HttpResponseMessage put = await PutAsync(upload.Url, upload.Headers, [], ct))
+            Assert.True(put.IsSuccessStatusCode);
+
+        byte[]? head = await storage.ReadHeadAsync(key, 1024, ct);
+        Assert.NotNull(head);
+        Assert.Empty(head);
     }
 
     [Fact]
