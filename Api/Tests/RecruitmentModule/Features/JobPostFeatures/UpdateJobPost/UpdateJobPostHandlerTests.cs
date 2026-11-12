@@ -206,6 +206,37 @@ public class UpdateJobPostHandlerTests
     }
 
     [Fact]
+    public async Task A_stale_version_is_a_conflict_even_when_it_repeats_the_stored_values()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+        await Handler(db).HandleAsync(Edit(post), ct);
+        await using RecruitmentDbContext other = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+
+        // The same edit again, by the same editor, on the version it no longer has: nothing would change, so EF Core
+        // would skip the UPDATE and its version check unless the handler forces the write.
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Handler(other).HandleAsync(Edit(post), ct));
+
+        await using RecruitmentDbContext read = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+        Assert.Equal((short)2, (await read.JobPosts.SingleAsync(ct)).Version);
+    }
+
+    [Fact]
+    public async Task Saving_unchanged_values_on_the_current_version_still_writes_the_row()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using RecruitmentDbContext db = TestDb.NewRecruitmentContext();
+        JobPost post = await SeedAsync(db, JobPostStatuses.Draft, ct);
+        await Handler(db).HandleAsync(Edit(post), ct);
+        await using RecruitmentDbContext other = TestDb.NewContextOnSameDb<RecruitmentDbContext>(db);
+
+        UpdateJobPostResponse response = await Handler(other).HandleAsync(Edit(post) with { Version = 2 }, ct);
+
+        Assert.Equal((short)3, response.Version);
+    }
+
+    [Fact]
     public async Task A_missing_post_is_404()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;

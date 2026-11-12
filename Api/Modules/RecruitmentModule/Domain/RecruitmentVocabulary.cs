@@ -30,6 +30,9 @@ public static class ModuleEvents
 
     /// <summary>A recruiter or an administrator added an applicant to a published job post by hand.</summary>
     public const string ApplicationCreatedManually = "application_created_manually";
+
+    /// <summary>A recruiter or an administrator corrected a candidate's name, e-mail or phone.</summary>
+    public const string ApplicationUpdated = "application_updated";
 }
 
 /// <summary>Where a job post is in its life (<c>job_post.status</c>).</summary>

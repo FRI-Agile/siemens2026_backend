@@ -253,6 +253,14 @@ copy is `ApplicationStatuses` in `RecruitmentVocabulary.cs`; change both togethe
   Who may list them is the post's: an administrator any post, a recruiter the posts assigned to them (`recruiter_id`),
   a hiring manager the posts they are the hiring manager of (`hiring_manager_id`, whoever created them), as
   `JobPostAccess` decides; any other post answers `404`.
+- **Staff correct a candidate's details** (`UpdateApplication`, `PUT /applications/{id}`): the first and last name, the
+  e-mail and the phone, with the same rules as on creation, carrying the `version` they read
+  ([optimistic locking](../conventions.md#optimistic-locking-version)); the status and the documents are changed by
+  features of their own. Only a recruiter on a post assigned to them, or an administrator on any post
+  (`JobPostAccess.Recruitable`); a hiring manager is refused by the `staff-recruiter` policy (`403`) and another
+  recruiter's candidate answers `404`. The caller goes to `updated_by`. An e-mail another candidate on the same post
+  already has, in any case, is `409`; changing only the case of the candidate's own e-mail is allowed. Every save
+  writes the row, so a stale `version` is `409` even when the values sent are the ones stored.
 - **The hiring manager never sees `nová žiadosť`.** A candidate the recruiter has not screened yet is left out of the
   list, its total and the detail for a caller who reaches the post only as its hiring manager
   (`JobPostAccess.SeesNewApplicationsOf`): an administrator sees them on every post, a recruiter on the posts assigned

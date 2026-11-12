@@ -153,6 +153,9 @@ internal sealed class UpdateJobPostHandler(RecruitmentDbContext db, IStaffDirect
         post.RecruiterId = command.RecruiterId;
         post.HiringManagerId = hiringManagerId;
         post.UpdatedBy = currentUser.RequireId();
+        // Always written, so the save always runs its `WHERE version = …`: a stale request that happens to repeat the
+        // stored values is a 409 too, instead of a silent no-op that EF Core would skip.
+        db.Entry(post).Property(p => p.UpdatedBy).IsModified = true;
         await db.SaveChangesAsync(ct);
 
         return new UpdateJobPostResponse(
